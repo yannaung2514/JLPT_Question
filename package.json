@@ -1,0 +1,30 @@
+{
+  "name": "jlp-old-question",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev",
+    "dev": "npx concurrently \"npm run server\" \"npm run client\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@ljharb/tsconfig": "^0.3.2",
+    "@types/pdf-parse": "^1.1.5",
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^9.0.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
+    "vite": "^8.1.2"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "pdf-parse": "^1.1.1",
+    "pdf2json": "^4.0.3",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  }
+}
