@@ -21,7 +21,6 @@
     "vite": "^8.1.2"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "pdf-parse": "^1.1.1",
     "pdf2json": "^4.0.3",
     "react": "^19.2.7",

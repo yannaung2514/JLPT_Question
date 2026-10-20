@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import axios from 'axios';
+import QuestionFrame from './components/QuestionFrame/QuestionFrame';
+import type { N2Question } from '../../shared/types';
 
 interface Question {
   question: string;
@@ -12,63 +14,128 @@ function App() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: number }>({});
-  const [submittedQuestions, setSubmittedQuestions] = useState<{ [key: number]: boolean }>({});
+  const [n2Questions, setN2Questions] = useState<N2Question[]>([]);
+  const [pdfUploaded, setPdfUploaded] = useState(false);
+
+  // Convert raw questions to N2 format
+  const convertToN2Questions = (rawQuestions: any[]): N2Question[] => {
+    const sections: Array<'vocabulary' | 'grammar' | 'reading'> = ['vocabulary', 'grammar', 'reading'];
+    const difficulties: Array<'easy' | 'medium' | 'hard'> = ['easy', 'medium', 'hard'];
+    
+    return rawQuestions.map((q, index) => ({
+      id: index + 1,
+      section: (q.section && sections.includes(q.section)) ? q.section : sections[index % sections.length],
+      questionText: q.question,
+      options: q.options,
+      correctAnswer: q.answer,
+      explanation: q.explanation,
+      difficulty: (q.difficulty && difficulties.includes(q.difficulty)) ? q.difficulty : difficulties[index % difficulties.length],
+    }));
+  };
 
   const handleUpload = async () => {
-    if (!file) return;
+    console.log('handleUpload called, file:', file);
+    if (!file) {
+      console.log('No file selected');
+      return;
+    }
     setLoading(true);
-    setSelectedAnswers({});
-    setSubmittedQuestions({});
+    setPdfUploaded(true);
+    console.log('Loading state set to true');
 
     const formData = new FormData();
     formData.append('pdfFile', file);
+    console.log('FormData created, sending to server...');
 
     try {
       const res = await axios.post('http://localhost:5000/upload', formData);
-      setQuestions(res.data.questions);
-      console.log(res.data);
+      console.log('Response received:', res.data);
+      console.log('Debug info:', res.data.debug);
+      const rawQuestions = res.data.questions;
+      console.log('Questions count:', rawQuestions?.length);
+      
+      if (rawQuestions && rawQuestions.length > 0) {
+        setQuestions(rawQuestions);
+        setN2Questions(convertToN2Questions(rawQuestions));
+      } else {
+        console.log('No questions from API, creating empty JLPT format');
+        const emptyQuestions = createEmptyJLPTFormat();
+        setQuestions(emptyQuestions);
+        setN2Questions(convertToN2Questions(emptyQuestions));
+      }
     } catch (err: any) {
-      const errorMessage = err.response?.data?.error || err.message || 'Unknown error';
-      alert('Error: ' + errorMessage);
+      console.error('Upload error:', err);
+      console.log('Creating empty JLPT format due to error');
+      const emptyQuestions = createEmptyJLPTFormat();
+      setQuestions(emptyQuestions);
+      setN2Questions(convertToN2Questions(emptyQuestions));
     } finally {
       setLoading(false);
+      console.log('Loading state set to false');
     }
   };
 
-  const handleOptionSelect = (questionIndex: number, optionIndex: number) => {
-    if (submittedQuestions[questionIndex]) return; // Prevent changing after submission
-    setSelectedAnswers(prev => ({
-      ...prev,
-      [questionIndex]: optionIndex
-    }));
+  // Load questions from Supabase
+  const handleLoadFromDatabase = async () => {
+    console.log('Loading questions from Supabase...');
+    setLoading(true);
+    setPdfUploaded(true);
+    
+    try {
+      console.log('Making request to: http://localhost:5000/api/questions');
+      const res = await axios.get('http://localhost:5000/api/questions');
+      console.log('Full response:', res);
+      console.log('Response data:', res.data);
+      console.log('Response status:', res.status);
+      
+      const questions = res.data.questions;
+      console.log('Questions array:', questions);
+      console.log('Questions length:', questions?.length);
+      
+      if (questions && questions.length > 0) {
+        console.log('Setting questions to state...');
+        setQuestions(questions);
+        setN2Questions(questions);
+        console.log(`Loaded ${questions.length} questions from Supabase`);
+        console.log('First question:', questions[0]);
+      } else {
+        console.log('No questions found in Supabase or questions array is empty');
+        console.log('Questions value:', questions);
+        const emptyQuestions = createEmptyJLPTFormat();
+        setQuestions(emptyQuestions);
+        setN2Questions(convertToN2Questions(emptyQuestions));
+      }
+    } catch (err: any) {
+      console.error('Error loading from Supabase:', err);
+      console.error('Error response:', err.response);
+      console.error('Error message:', err.message);
+      alert(`Failed to load questions from database: ${err.message}`);
+      const emptyQuestions = createEmptyJLPTFormat();
+      setQuestions(emptyQuestions);
+      setN2Questions(convertToN2Questions(emptyQuestions));
+    } finally {
+      setLoading(false);
+      console.log('Loading finished');
+    }
   };
 
-  const handleSubmitAnswer = (questionIndex: number) => {
-    if (selectedAnswers[questionIndex] === undefined) return; // No answer selected
-    setSubmittedQuestions(prev => ({
-      ...prev,
-      [questionIndex]: true
-    }));
+  const handleReset = () => {
+    setQuestions([]);
+    setN2Questions([]);
+    setFile(null);
+    setPdfUploaded(false);
   };
 
-  const isCorrect = (questionIndex: number) => {
-    if (!submittedQuestions[questionIndex]) return false;
-    const q = questions[questionIndex];
-    const selectedOptionText = q.options[selectedAnswers[questionIndex]];
-    return selectedOptionText === q.answer;
+  // Create empty JLPT N2 format - returns empty array so user can add questions manually
+  const createEmptyJLPTFormat = (): any[] => {
+    return [];
   };
-
-  const getOptionLabel = (index: number) => {
-    return String.fromCharCode(65 + index); // A, B, C, D, ...
-  };
-
   return (
     <div className="app-container">
       {/* Header */}
       <div className="header">
         <div className="header-content">
-          <h1 className="header-title">JLPT Question Generator</h1>
+          <h1 className="header-title">JLPT N2 Question Generator</h1>
         </div>
       </div>
 
@@ -84,7 +151,7 @@ function App() {
                 <line x1="9" y1="15" x2="15" y2="15" />
               </svg>
             </div>
-            <p className="upload-text">Upload a JLPT PDF to generate practice questions</p>
+            <p className="upload-text">Upload a JLPT PDF to generate N2 practice questions</p>
             <div className="upload-controls">
               <input
                 type="file"
@@ -107,103 +174,55 @@ function App() {
                     Generating...
                   </span>
                 ) : (
-                  'Generate Questions'
+                  'Generate N2 Questions'
                 )}
+              </button>
+              <button
+                onClick={handleLoadFromDatabase}
+                disabled={loading}
+                className="load-db-btn"
+              >
+                {loading ? 'Loading...' : ' Load from Database'}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Questions Section */}
-        {questions.length > 0 && (
-          <div className="questions-section">
-            <div className="questions-header">
-              <h2>Practice Questions</h2>
-              <span className="question-count">Total: {questions.length} questions</span>
-            </div>
-
-            <div className="paper-container">
-              {questions.map((q, qIndex) => (
-                <div key={qIndex} className={`question-card ${submittedQuestions[qIndex] ? (isCorrect(qIndex) ? 'correct' : 'incorrect') : ''}`}>
-                  <div className="question-number">{qIndex + 1}</div>
-                  <div className="question-body">
-                    <p className="question-text">{q.question}</p>
-
-                    <div className="options-row">
-                      {q.options.map((opt, oIndex) => {
-                        const optionLabel = getOptionLabel(oIndex);
-                        let optionClass = 'option-item';
-                        
-                        if (submittedQuestions[qIndex]) {
-                          const isSelectedOption = selectedAnswers[qIndex] === oIndex;
-                          const isAnswerOption = opt === q.answer;
-                          
-                          if (isAnswerOption) {
-                            optionClass += ' correct-option';
-                          } else if (isSelectedOption && !isAnswerOption) {
-                            optionClass += ' wrong-option';
-                          }
-                        } else if (selectedAnswers[qIndex] === oIndex) {
-                          optionClass += ' selected';
-                        }
-
-                        return (
-                          <label
-                            key={oIndex}
-                            className={optionClass}
-                          >
-                            <input
-                              type="radio"
-                              name={`question-${qIndex}`}
-                              checked={selectedAnswers[qIndex] === oIndex}
-                              onChange={() => handleOptionSelect(qIndex, oIndex)}
-                              className="radio-input"
-                              disabled={submittedQuestions[qIndex]}
-                            />
-                            <span className="radio-custom"></span>
-                            <span className="option-label">{optionLabel}.</span>
-                            <span className="option-text">{opt}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-
-                    {/* Submit Button */}
-                    {!submittedQuestions[qIndex] && (
-                      <button
-                        className="submit-btn"
-                        onClick={() => handleSubmitAnswer(qIndex)}
-                        disabled={selectedAnswers[qIndex] === undefined}
-                      >
-                        Submit Answer
-                      </button>
-                    )}
-
-                    {/* Result & Explanation */}
-                    {submittedQuestions[qIndex] && (
-                      <div className={`result-section ${isCorrect(qIndex) ? 'correct-result' : 'incorrect-result'}`}>
-                        <div className="result-icon">
-                          {isCorrect(qIndex) ? '✅' : '❌'}
-                        </div>
-                        <div className="result-details">
-                          <p className="result-text">
-                            {isCorrect(qIndex) ? 'Correct!' : 'Incorrect'}
-                          </p>
-                          <p className="correct-answer-text">
-                            <strong>Answer:</strong> {q.answer}
-                          </p>
-                          <div className="explanation-box">
-                            <strong>Explanation:</strong>
-                            <p className="explanation-text">{q.explanation}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* N2 Question Frame */}
+        {pdfUploaded && (
+          <QuestionFrame 
+            questions={n2Questions} 
+            onReset={handleReset}
+            onUpdateQuestion={(index, field, value) => {
+              setN2Questions(prev => {
+                if (field === 'add') {
+                  // Add new question
+                  const newQ = JSON.parse(value);
+                  const newQuestion: N2Question = {
+                    id: prev.length + 1,
+                    section: 'vocabulary', // Default section, can be customized
+                    questionText: newQ.text,
+                    options: newQ.options,
+                    correctAnswer: newQ.answer || '',
+                    explanation: '',
+                    difficulty: 'medium'
+                  };
+                  return [...prev, newQuestion];
+                }
+                
+                const updated = [...prev];
+                if (field === 'questionText') {
+                  updated[index] = { ...updated[index], questionText: value };
+                } else if (field.startsWith('option-')) {
+                  const optIdx = parseInt(field.split('-')[1]);
+                  const newOptions = [...updated[index].options];
+                  newOptions[optIdx] = value;
+                  updated[index] = { ...updated[index], options: newOptions };
+                }
+                return updated;
+              });
+            }}
+          />
         )}
       </div>
     </div>
