@@ -204,6 +204,7 @@
   font-weight: 600;
   color: var(--n2-text);
   text-shadow: 0 0 4px white;
+}
 
 /* ===== Start Overlay ===== */
 .n2-start-overlay {
@@ -349,6 +350,41 @@
   text-align: left;
   color: #212121;
   background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
+}
+
+/* ===== Question Photo (questions whose `question` column holds a photoId) ===== */
+.n2-question-photo-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 16px 24px;
+  background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--n2-border);
+}
+
+.n2-question-photo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+}
+
+.n2-question-photo-img {
+  display: block;
+  max-width: 100%;
+  max-height: 260px;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--n2-border);
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  cursor: zoom-in;
+  object-fit: contain;
+}
+
+.n2-question-photo-img:hover {
+  border-color: var(--n2-primary);
 }
 
 /* ===== Options ===== */
@@ -1119,13 +1155,25 @@
   margin-top: 0px;
 }
 
+.n2-section-header-title {
+  font-size: 18px;
+  font-weight: 800;
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.n2-section-header-body {
+  font-size: 15px;
+  font-weight: normal !important;
+  line-height: 1.7;
+}
+
 .n2-question-compact {
-  padding: 20px;
-  margin-bottom: 20px !important;
+  padding: 16px;
   background: linear-gradient(135deg, #ffffff 0%, #f8f9ff 100%);
   border-radius: 12px;
-  border: 2px solid #e8eaf6;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  margin-bottom: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   transition: all 0.3s ease;
 }
 
@@ -1138,7 +1186,6 @@
 .n2-question-line {
   display: flex !important;
   align-items: flex-start !important;
-  gap: 12px;
   margin-bottom: 8px;
   flex-wrap: nowrap !important;
   width: 100%;
@@ -1147,9 +1194,7 @@
 .n2-q-number {
   flex-shrink: 0 !important;
   font-size: 16px;
-  font-weight: 800;
-  color: white;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: rgb(0, 0, 0);
   min-width: 40px;
   height: auto;
   padding: 6px 10px;
@@ -1157,7 +1202,6 @@
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
   letter-spacing: 0.5px;
   box-sizing: border-box;
   line-height: 1.2;
@@ -1182,6 +1226,16 @@
   word-break: break-word;
   white-space: normal;
 }
+
+.n2-q-text-inline {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 15px;
+  line-height: 1.6;
+  font-family: inherit;
+  resize: none;
   overflow: hidden;
   background: transparent;
   transition: all 0.2s;
@@ -1353,6 +1407,49 @@
 .n2-usage-option .n2-opt-label strong {
   font-weight: 700;
   color: #667eea;
+}
+
+/* ===== Listening (聴解) - Vertical Option Layout ===== */
+/* Listening options are long sentences, so they are stacked vertically
+   instead of being laid out side by side like the short vocabulary ones. */
+.n2-listening-options {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0px;
+}
+
+.n2-listening-option {
+  width: 100%;
+  min-width: auto;
+  flex: 0 0 auto;
+}
+
+/* ===== Listening 問題３・問題４ (database rows) ===== */
+/* 聴解 問題３・問題４ choices on the real exam are printed on the answer sheet,
+   so the options are usually short (numbers 1–4). They are rendered inline with
+   the choice number, and the label text is hidden when it would just duplicate it. */
+.n2-listening-sub3-question {
+  margin-top: 12px;
+}
+
+.n2-listening-sub3-options {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 40px;
+  flex-wrap: wrap;
+  margin-top: 0;
+}
+
+.n2-listening-sub3-option {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: auto;
+  padding: 4px 8px;
+}
+
+.n2-listening-sub3-option .n2-opt-num {
+  font-size: 15px;
 }
 
 /* ===== Modal ===== */
@@ -1576,6 +1673,8 @@
   .n2-section-tabs { flex-direction: column; }
   .n2-section-tab { border-radius: var(--n2-radius); }
   .n2-question-text { font-size: 15px; padding: 16px; }
+  .n2-question-photo-wrap { padding: 12px 16px; }
+  .n2-question-photo-img { max-height: 280px; }
   .n2-options { padding: 12px; }
   .n2-option { padding: 10px 12px; }
   .n2-navigation { flex-direction: column; }
@@ -1685,4 +1784,116 @@
   line-height: 1.8;
   margin: 8px 0;
   color: #333;
+}
+
+/* ===== Script Button for 聴解 (Listening) ===== */
+.n2-script-btn {
+  margin-left: 12px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  background: #f5f5f5;
+  border: 1px solid #999;
+  border-radius: 4px;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.n2-script-btn:hover {
+  background: #eaeaea;
+  border-color: #666;
+}
+
+.n2-script-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ===== Script Modal for 聴解 (Listening) ===== */
+.n2-script-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(4px);
+  animation: n2-script-fade-in 0.25s ease-out;
+}
+
+.n2-script-modal {
+  background: #fff;
+  border-radius: 12px;
+  max-width: 640px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: n2-script-slide-up 0.3s ease-out;
+}
+
+.n2-script-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+
+.n2-script-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  letter-spacing: 0.5px;
+}
+
+.n2-script-close-btn {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.n2-script-close-btn:hover {
+  background: #f0f0f0;
+  color: #111;
+}
+
+.n2-script-close-btn:active {
+  background: #e5e5e5;
+}
+
+.n2-script-modal-body {
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.n2-script-text {
+  font-size: 12px;
+  line-height: 1.9;
+  color: #333;
+  white-space: pre-wrap;
+  font-family: inherit;
+}
+
+@keyframes n2-script-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes n2-script-slide-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }

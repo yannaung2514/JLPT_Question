@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+﻿import { useState, useEffect, useCallback } from 'react';
 import './QuestionFrame.css';
 
 type N2Section = 'vocabulary' | 'grammar' | 'reading' | 'listening';
@@ -13,6 +13,8 @@ interface N2Question {
   options: string[];
   correctAnswer: string;
   explanation: string;
+  script?: string;
+  photoUrl?: string;
 }
 
 const SECTION_LABELS: Record<N2Section, string> = {
@@ -25,10 +27,9 @@ const SECTION_LABELS: Record<N2Section, string> = {
 interface QuestionFrameProps {
   questions: N2Question[];
   onReset?: () => void;
-  onUpdateQuestion?: (index: number, field: string, value: string) => void;
 }
 
-function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFrameProps) {
+function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<{ [key: number]: number }>({});
   const [submitted, setSubmitted] = useState(false);
@@ -39,10 +40,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
   const [viewMode, setViewMode] = useState<'single' | 'all'>('all');
   const [selectedSection, setSelectedSection] = useState<N2Section | 'all'>('all');
   const [selectedExam, setSelectedExam] = useState<string>('all');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newQuestion, setNewQuestion] = useState({ text: '', options: ['', '', '', ''], answer: '' });
-  const textAreaRef = useRef<HTMLTextAreaElement>(null);
-  const optionRefs = useRef<(HTMLInputElement | null)[]>([null, null, null, null]);
+  const [openScriptId, setOpenScriptId] = useState<number | null>(null);
 
   const sections: N2Section[] = ['vocabulary', 'grammar', 'reading', 'listening'];
   
@@ -138,72 +136,6 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
     setTimeRemaining(0);
     setTimerActive(false);
     setQuizStarted(false);
-  };
-
-  const handleAddQuestion = () => {
-    if (onUpdateQuestion && newQuestion.text.trim()) {
-      onUpdateQuestion(-1, 'add', JSON.stringify(newQuestion));
-      setNewQuestion({ text: '', options: ['', '', '', ''], answer: '' });
-      setShowAddModal(false);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setNewQuestion({ text: '', options: ['', '', '', ''], answer: '' });
-    setShowAddModal(false);
-  };
-
-  const applyFormatting = (field: string, format: 'bold' | 'underline' | 'target') => {
-    let inputElement: HTMLTextAreaElement | HTMLInputElement | null = null;
-    
-    if (field === 'text') {
-      inputElement = textAreaRef.current;
-    } else if (field.startsWith('option-')) {
-      const idx = parseInt(field.split('-')[1]);
-      inputElement = optionRefs.current[idx];
-    }
-
-    if (!inputElement) return;
-
-    const start = inputElement.selectionStart;
-    const end = inputElement.selectionEnd;
-    if (start === null || end === null) return;
-    const text = inputElement.value;
-    const selectedText = text.substring(start, end);
-
-    if (!selectedText) return;
-
-    let newText: string;
-    
-    if (format === 'target') {
-      // Create JSON format with target
-      const jsonFormat = JSON.stringify({ text: text, target: selectedText });
-      newText = jsonFormat;
-    } else {
-      const wrapper = format === 'bold' ? '**' : '__';
-      const formattedText = `${wrapper}${selectedText}${wrapper}`;
-      newText = text.substring(0, start) + formattedText + text.substring(end);
-    }
-
-    if (field === 'text') {
-      setNewQuestion({ ...newQuestion, text: newText });
-    } else if (field.startsWith('option-')) {
-      const idx = parseInt(field.split('-')[1]);
-      const newOpts = [...newQuestion.options];
-      newOpts[idx] = newText;
-      setNewQuestion({ ...newQuestion, options: newOpts });
-    }
-
-    // Restore cursor position
-    setTimeout(() => {
-      if (inputElement) {
-        inputElement.focus();
-        if (format !== 'target') {
-          const newCursorPos = start + selectedText.length + 4;
-          inputElement.setSelectionRange(newCursorPos, newCursorPos);
-        }
-      }
-    }, 0);
   };
 
   const parseFormattedText = (text: string): string => {
@@ -345,18 +277,23 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
   const currentSectionLabel = SECTION_LABELS[currentSection];
 
   // Listening (聴解) section headers based on sub_id
-  const LISTENING_SECTION_HEADERS: Record<number, string> = {
-    1: '問題１では、まず質問を聞いてください。それから話を聞いて、問題用紙の１から４の中から最もよいものを一つ選んでください。',
-    2: '問題２では、まず質問を聞いてください。そのあと、問題用紙のせんたくしを読んでください。読む時間があります。それから話を聞いて、問題用紙の１から４の中から、最もよいものを一つ選んでください。',
-    3: '問題３では、問題用紙に何も印刷されていません。この問題は、全体としてどんな内容かを聞く問題です。話の前に質問はありません。まず話を聞いてください。それから、質問とせんたくしを聞きする返事を聞いてから３の中から、最もよいものを一つ選んでください。',
-    4: '問題４では、問題用紙に何も印刷されていません。まず文を聞いてください。それから、それに対する答えを１から４の中から、最もよいものを一つ選んでください。',
-    5: '問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。'
+  const LISTENING_SECTION_HEADERS: Record<number, { title: string; header: string }> = {
+    1: { title: '問題１', header: '問題１では、まず質問を聞いてください。それから話を聞いて、問題用紙の１から４の中から最もよいものを一つ選んでください。' },
+    2: { title: '問題２', header: '問題２では、まず質問を聞いてください。そのあと、問題用紙のせんたくしを読んでください。読む時間があります。それから話を聞いて、問題用紙の１から４の中から、最もよいものを一つ選んでください。' },
+    3: { title: '問題３', header: '問題３では、問題用紙に何も印刷されていません。この問題は、全体としてどんな内容かを聞く問題です。話の前に質問はありません。まず話を聞いてください。それから、質問とせんたくしを聞きする返事を聞いてから３の中から、最もよいものを一つ選んでください。' },
+    4: { title: '問題４', header: '問題４では、問題用紙に何も印刷されていません。まず文を聞いてください。それから、それに対する答えを１から３の中から、最もよいものを一つ選んでください。' },
+    5: { title: '問題５', header: '問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。' },
+    51: { title: '１番', header: '問題用紙に何もいんさっされていません。まず話をい聞いてください。それから、質問とせんたくしを聞いて、１から４の中から、最もよいものを一つ選んでください。' },
+    52: { title: '２番', header: 'まず話を聞いてください。それから、ニつの質問を聞いて、それぞれ問題用紙の1から4の中から最もよいものを一つ選んてください。' }
   };
 
   // Section header text mapping based on sub_id
+  const getListeningSectionTitle = (subId: number): string => {
+    return LISTENING_SECTION_HEADERS[subId]?.title || '';
+  };
   const getSectionHeaderText = (subId: number, section?: N2Section): string => {
     if (section === 'listening') {
-      return LISTENING_SECTION_HEADERS[subId] || '';
+      return LISTENING_SECTION_HEADERS[subId]?.header || '';
     }
     const sectionHeaders: Record<number, string> = {
       1: '問題１______の語彙の読み方として最もよいものを、1・2・3・4 から一つ選びなさい。',
@@ -606,12 +543,6 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
       {/* All Questions View */}
       {viewMode === 'all' && (
         <div className="n2-all-questions-view">
-          {/* Add Question Button */}
-          <div className="n2-add-question-container">
-            <button className="n2-add-btn" onClick={() => setShowAddModal(true)}>
-              <span className="add-icon">Add Question</span>
-            </button>
-          </div>
 
           {questionsBySection
             .filter(({ section }) => selectedSection === 'all' || selectedSection === section)
@@ -1250,8 +1181,28 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                           <div key={globalIndex}>
                             {showSectionHeader && currentSubId && (
                               <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
+                                {q.section === 'listening' && currentSubId === 51 && (
+                                  <>
+                                    <div style={{ marginBottom: '5px' }}>問題５</div>
+                                    <div style={{ marginBottom: '10px', fontWeight: 'normal', fontSize: '14px' }}>
+                                      問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。
+                                    </div>
+                                  </>
+                                )}
+                                {q.section === 'listening' && (
+                                  <div style={{ marginBottom: '5px' }}>{getListeningSectionTitle(currentSubId)}</div>
+                                )}
                                 {getSectionHeaderText(currentSubId, q.section)}
                               </div>
+                            )}
+                            {q.section === 'listening' && q.script && (
+                              <button
+                                className="n2-script-btn"
+                                onClick={() => setOpenScriptId(globalIndex)}
+                                style={{ marginTop: '10px', marginBottom: '10px' }}
+                              >
+                                スクリプト
+                              </button>
                             )}
                             <div 
                               className={`n2-question-compact ${currentSubId === 6 ? 'n2-usage-question' : ''}`}
@@ -1259,7 +1210,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             >
                               <div className="n2-question-line">
                                 <div className="n2-q-text-wrapper">
-                                <span className="n2-q-number">{globalIndex + 1}) </span>
+                                <span className="n2-q-number">{(q.number ?? globalIndex + 1)}) </span>
                                   {currentSubId === 6 ? (
                                     <span 
                                       className="n2-target-word"
@@ -1273,7 +1224,12 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                                   )}
                                 </div>
                               </div>
-                              <div className={`n2-options-with-radio ${currentSubId === 6 ? 'n2-usage-options' : ''}`}>
+                              {q.photoUrl && (
+                                <div style={{ marginTop: '10px', marginBottom: '10px' }}>
+                                  <img src={q.photoUrl} alt="question" style={{ maxWidth: '300px', maxHeight: '300px', height: 'auto', width: 'auto' }} />
+                                </div>
+                              )}
+                              <div className={`n2-options-with-radio ${currentSubId === 6 || currentSubId === 1 || currentSubId === 2 ? 'n2-usage-options' : ''}`}>
                                 {q.options.map((opt, optIdx) => {
                                   // For sub_id=6, extract target word and underline it in options
                                   const targetWord = currentSubId === 6 ? extractTargetWord(q.questionText) : '';
@@ -1297,10 +1253,12 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                                       />
                                       <span className="n2-radio-custom"></span>
                                       <span className="n2-opt-num">{optIdx + 1}</span>
-                                      <span 
-                                        className="n2-opt-label"
-                                        dangerouslySetInnerHTML={{ __html: optionHtml }}
-                                      />
+                                      {currentSubId !== 3 && currentSubId !== 4 && currentSubId !== 51 && (
+                                        <span 
+                                          className="n2-opt-label"
+                                          dangerouslySetInnerHTML={{ __html: optionHtml }}
+                                        />
+                                      )}
                                     </label>
                                   );
                                 })}
@@ -1315,111 +1273,6 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
               </div>
             );
           })}
-        </div>
-      )}
-
-      {/* Add Question Modal */}
-      {showAddModal && (
-        <div className="n2-modal-overlay">
-          <div className="n2-modal">
-            <div className="n2-modal-header">
-              <h3>新しい問題を追加</h3>
-              <button className="n2-modal-close" onClick={handleCloseModal}>×</button>
-            </div>
-            <div className="n2-modal-body">
-              <div className="n2-modal-field">
-                <label>問題文:</label>
-                <div className="n2-formatting-toolbar">
-                  <button 
-                    type="button"
-                    className="n2-format-btn"
-                    onClick={() => applyFormatting('text', 'bold')}
-                    title="Bold (**text**)"
-                  >
-                    <strong>B</strong>
-                  </button>
-                  <button 
-                    type="button"
-                    className="n2-format-btn"
-                    onClick={() => applyFormatting('text', 'underline')}
-                    title="Underline (__text__)"
-                  >
-                    <u>U</u>
-                  </button>
-                  <button 
-                    type="button"
-                    className="n2-format-btn target-btn"
-                    onClick={() => applyFormatting('text', 'target')}
-                    title="Set as Target (bold + underline)"
-                  >
-                    <strong><u>T</u></strong>
-                  </button>
-                </div>
-                <textarea
-                  ref={textAreaRef}
-                  value={newQuestion.text}
-                  onChange={(e) => setNewQuestion({ ...newQuestion, text: e.target.value })}
-                  placeholder="例: 建物の人口に警備の人がいます。"
-                  rows={3}
-                />
-                <div className="n2-format-hint">
-                  Tip: Select text and click B/U/T, or use **text** for bold, __text__ for underline. T button creates target format with bold+underline.
-                </div>
-              </div>
-              <div className="n2-modal-field">
-                <label>選択肢:</label>
-                {newQuestion.options.map((opt, idx) => (
-                  <div key={idx} className="n2-modal-option">
-                    <span className="n2-modal-opt-num">{idx + 1}.</span>
-                    <div className="n2-option-input-wrapper">
-                      <div className="n2-formatting-toolbar small">
-                        <button 
-                          type="button"
-                          className="n2-format-btn"
-                          onClick={() => applyFormatting(`option-${idx}`, 'bold')}
-                          title="Bold"
-                        >
-                          <strong>B</strong>
-                        </button>
-                        <button 
-                          type="button"
-                          className="n2-format-btn"
-                          onClick={() => applyFormatting(`option-${idx}`, 'underline')}
-                          title="Underline"
-                        >
-                          <u>U</u>
-                        </button>
-                      </div>
-                      <input
-                        ref={(el) => { optionRefs.current[idx] = el; }}
-                        type="text"
-                        value={opt}
-                        onChange={(e) => {
-                          const newOpts = [...newQuestion.options];
-                          newOpts[idx] = e.target.value;
-                          setNewQuestion({ ...newQuestion, options: newOpts });
-                        }}
-                        placeholder={`選択肢${idx + 1}`}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="n2-modal-field">
-                <label>正解:</label>
-                <input
-                  type="text"
-                  value={newQuestion.answer}
-                  onChange={(e) => setNewQuestion({ ...newQuestion, answer: e.target.value })}
-                  placeholder="正解の選択肢番号 (1, 2, 3, または 4)"
-                />
-              </div>
-            </div>
-            <div className="n2-modal-footer">
-              <button className="n2-modal-btn cancel" onClick={handleCloseModal}>キャンセル</button>
-              <button className="n2-modal-btn ok" onClick={handleAddQuestion}>OK</button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1467,6 +1320,21 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
             {onReset && (
               <button className="n2-reset-btn" onClick={onReset}>新しいPDFをアップロード</button>
             )}
+          </div>
+        </div>
+      )}
+      {openScriptId !== null && (
+        <div className="n2-script-modal-overlay" onClick={() => setOpenScriptId(null)}>
+          <div className="n2-script-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="n2-script-modal-header">
+              <h3 className="n2-script-modal-title">スクリプト</h3>
+              <button className="n2-script-close-btn" onClick={() => setOpenScriptId(null)}>×</button>
+            </div>
+            <div className="n2-script-modal-body">
+              <p className="n2-script-text">
+                {questions[openScriptId]?.script || 'スクリプトがありません'}
+              </p>
+            </div>
           </div>
         </div>
       )}

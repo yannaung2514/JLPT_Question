@@ -16,11 +16,15 @@ function App() {
     
     return rawQuestions.map((q, index) => ({
       id: String(q.id ?? index + 1),
+      sub_id: typeof q.sub_id === 'number' ? q.sub_id : undefined,
+      number: typeof q.number === 'number' ? q.number : undefined,
       section: (q.section && sections.includes(q.section)) ? q.section : sections[index % sections.length],
       questionText: q.question,
-      options: q.options,
+      options: (q.options || []).filter((o: any) => o !== null && o !== undefined && String(o).trim() !== ''),
       correctAnswer: q.answer,
       explanation: q.explanation,
+      script: q.script,
+      photoUrl: q.photoUrl,
       difficulty: (q.difficulty && difficulties.includes(q.difficulty)) ? q.difficulty : difficulties[index % difficulties.length],
     }));
   };
@@ -96,7 +100,23 @@ function App() {
       console.error('Error loading from Supabase:', err);
       console.error('Error response:', err.response);
       console.error('Error message:', err.message);
-      alert(`Failed to load questions from database: ${err.message}`);
+      // Prefer the server's explanation (e.g. "Supabase is not configured...")
+      // over axios's generic "Request failed with status code 500".
+      const serverDetail = err?.response?.data?.details || err?.response?.data?.error;
+      let message: string;
+      if (serverDetail) {
+        message = `Failed to load questions from database: ${serverDetail}`;
+      } else if (!err?.response) {
+        // No response at all means the server was never reached
+        // (not started, wrong port, or blocked by the network).
+        message =
+          'Failed to load questions from database: the server is not reachable at ' +
+          'http://localhost:5000. Start it with "npm run server" (or "npm run dev" ' +
+          'from the project root) and try again.';
+      } else {
+        message = `Failed to load questions from database: ${err.message}`;
+      }
+      alert(message);
       const emptyQuestions = createEmptyJLPTFormat();
       setN2Questions(convertToN2Questions(emptyQuestions));
     } finally {
@@ -175,38 +195,9 @@ function App() {
 
         {/* N2 Question Frame */}
         {pdfUploaded && (
-          <QuestionFrame 
-            questions={n2Questions} 
+          <QuestionFrame
+            questions={n2Questions}
             onReset={handleReset}
-            onUpdateQuestion={(index, field, value) => {
-              setN2Questions(prev => {
-                if (field === 'add') {
-                  // Add new question
-                  const newQ = JSON.parse(value);
-                  const newQuestion: N2Question = {
-                    id: `local_${Date.now()}_${prev.length + 1}`,
-                    section: 'vocabulary', // Default section, can be customized
-                    questionText: newQ.text,
-                    options: newQ.options,
-                    correctAnswer: newQ.answer || '',
-                    explanation: '',
-                    difficulty: 'medium'
-                  };
-                  return [...prev, newQuestion];
-                }
-                
-                const updated = [...prev];
-                if (field === 'questionText') {
-                  updated[index] = { ...updated[index], questionText: value };
-                } else if (field.startsWith('option-')) {
-                  const optIdx = parseInt(field.split('-')[1]);
-                  const newOptions = [...updated[index].options];
-                  newOptions[optIdx] = value;
-                  updated[index] = { ...updated[index], options: newOptions };
-                }
-                return updated;
-              });
-            }}
           />
         )}
       </div>

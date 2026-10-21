@@ -20,10 +20,14 @@ export interface N2Question {
   number?: number;
   section: N2Section;
   questionText: string;
+  /** URL of the picture that acts as the question (e.g. 聴解 image questions). */
+  photoUrl?: string;
   options: string[];
   correctAnswer: string;
   explanation: string;
   difficulty: 'easy' | 'medium' | 'hard' | string;
+  /** Script text for 聴解 (listening) questions, shown in a popup. */
+  script?: string;
 }
 
 export interface N2QuizState {
