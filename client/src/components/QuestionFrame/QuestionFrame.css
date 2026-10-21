@@ -1786,23 +1786,124 @@
   color: #333;
 }
 
+/* ===== Listening Audio Player ===== */
+.n2-audio-player {
+  position: fixed;
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  z-index: 1000;
+  background: linear-gradient(135deg, #e8eaf6 0%, #c5cae9 100%);
+  border-radius: 12px;
+  padding: 16px 20px;
+  box-shadow: 0 4px 16px rgba(26, 35, 126, 0.25);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  width: 220px;
+  max-width: calc(100vw - 40px);
+}
+
+.n2-audio-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+}
+
+.n2-audio-btn {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: #fff;
+  color: #1a237e;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.n2-audio-btn:hover {
+  background: #f0f0ff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(26, 35, 126, 0.15);
+}
+
+.n2-audio-btn:active {
+  transform: translateY(0);
+}
+
+.n2-audio-play {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: #fff;
+  padding: 8px 20px;
+  font-size: 15px;
+}
+
+.n2-audio-play:hover {
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+}
+
+.n2-audio-time {
+  font-size: 13px;
+  color: #1a237e;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.n2-audio-seekbar {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(26, 35, 126, 0.2);
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.n2-audio-seekbar::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.n2-audio-seekbar::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
 /* ===== Script Button for 聴解 (Listening) ===== */
 .n2-script-btn {
   margin-left: 12px;
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 6px 14px;
+  font-size: 13px;
   font-weight: 600;
-  color: #333;
-  background: #f5f5f5;
-  border: 1px solid #999;
-  border-radius: 4px;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
   vertical-align: middle;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+  transition: all 0.2s ease;
 }
 
 .n2-script-btn:hover {
-  background: #eaeaea;
-  border-color: #666;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
 }
 
 .n2-script-btn:disabled {
@@ -1810,6 +1911,30 @@
   cursor: not-allowed;
 }
 
+/* ===== Script Modal Audio Controls ===== */
+.n2-script-audio-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 20px 20px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.n2-script-audio-controls .n2-audio-seekbar {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.n2-script-audio-time {
+  font-size: 12px;
+  color: #1a237e;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  width: 100%;
+  text-align: center;
+}
 /* ===== Script Modal for 聴解 (Listening) ===== */
 .n2-script-modal-overlay {
   position: fixed;
@@ -1841,51 +1966,56 @@
   justify-content: space-between;
   padding: 20px 24px;
   border-bottom: 1px solid #e5e5e5;
-  background: #fafafa;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
 }
 
 .n2-script-modal-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  color: #111;
+  color: #fff;
   letter-spacing: 0.5px;
 }
 
 .n2-script-close-btn {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.2);
   border: none;
   border-radius: 6px;
   width: 32px;
   height: 32px;
   font-size: 20px;
-  color: #666;
+  color: #fff;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
+  transition: all 0.2s ease;
 }
 
 .n2-script-close-btn:hover {
-  background: #f0f0f0;
-  color: #111;
+  background: rgba(255, 255, 255, 0.3);
+  color: #fff;
 }
 
 .n2-script-close-btn:active {
-  background: #e5e5e5;
+  background: rgba(255, 255, 255, 0.4);
 }
 
 .n2-script-modal-body {
-  padding: 24px;
+  padding: 28px 32px;
   overflow-y: auto;
+  background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
 }
 
 .n2-script-text {
-  font-size: 12px;
-  line-height: 1.9;
-  color: #333;
+  font-size: 13px;
+  line-height: 2;
+  color: #2d3748;
   white-space: pre-wrap;
-  font-family: inherit;
+  font-family: 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic', 'Meiryo', sans-serif;
+  letter-spacing: 0.3px;
+  margin: 0;
+  padding: 4px 0;
 }
 
 @keyframes n2-script-fade-in {

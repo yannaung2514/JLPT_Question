@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react';
+﻿import { useState, useEffect, useCallback, useRef } from 'react';
 import './QuestionFrame.css';
 
 type N2Section = 'vocabulary' | 'grammar' | 'reading' | 'listening';
@@ -29,7 +29,7 @@ interface QuestionFrameProps {
   onReset?: () => void;
 }
 
-function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
+function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<{ [key: number]: number }>({});
   const [submitted, setSubmitted] = useState(false);
@@ -39,13 +39,98 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
   const [quizStarted, setQuizStarted] = useState(false);
   const [viewMode, setViewMode] = useState<'single' | 'all'>('all');
   const [selectedSection, setSelectedSection] = useState<N2Section | 'all'>('all');
-  const [selectedExam, setSelectedExam] = useState<string>('all');
+  const [selectedExam, setSelectedExam] = useState<string>('');
   const [openScriptId, setOpenScriptId] = useState<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [audioError, setAudioError] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const sections: N2Section[] = ['vocabulary', 'grammar', 'reading', 'listening'];
   
   // Extract unique exam IDs from questions
   const uniqueExamIds = Array.from(new Set(questions.map(q => q.id).filter(Boolean))) as string[];
+  
+  // Default to first exam when '全部' is removed
+  useEffect(() => {
+    if (uniqueExamIds.length > 0 && (!selectedExam || !uniqueExamIds.includes(selectedExam))) {
+      setSelectedExam(uniqueExamIds[0]);
+    }
+  }, [uniqueExamIds, selectedExam]);
+  
+  const currentAudioUrl = selectedSection === 'listening'
+    ? (selectedExam ? audioUrls?.[selectedExam] : (uniqueExamIds.length > 0 ? audioUrls?.[uniqueExamIds[0]] : undefined))
+    : undefined;
+
+  // Audio URL for the question whose script popup is open
+  const openedScriptQuestion = openScriptId !== null ? questions[openScriptId] : null;
+  const scriptAudioUrl = openedScriptQuestion?.section === 'listening'
+    ? (openedScriptQuestion.id ? audioUrls?.[String(openedScriptQuestion.id)] : (uniqueExamIds.length > 0 ? audioUrls?.[uniqueExamIds[0]] : undefined))
+    : undefined;
+
+  // Reset audio state when URL changes
+  useEffect(() => {
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setAudioError(false);
+    const audio = audioRef.current;
+    if (audio) {
+      audio.pause();
+      audio.currentTime = 0;
+    }
+  }, [currentAudioUrl]);
+
+  const handleTogglePlay = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play().then(() => setIsPlaying(true)).catch(() => setAudioError(true));
+    }
+  };
+
+  const skipBackward = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = Math.max(0, audio.currentTime - 10);
+    setCurrentTime(audio.currentTime);
+  };
+
+  const skipForward = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.currentTime = Math.min(duration || audio.duration || 0, audio.currentTime + 10);
+    setCurrentTime(audio.currentTime);
+  };
+
+  const handleTimeUpdate = () => {
+    const audio = audioRef.current;
+    if (audio) setCurrentTime(audio.currentTime);
+  };
+
+  const handleLoadedMetadata = () => {
+    const audio = audioRef.current;
+    if (audio) setDuration(audio.duration);
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const t = Number(e.target.value);
+    audio.currentTime = t;
+    setCurrentTime(t);
+  };
+
+  const formatAudioTime = (s: number) => {
+    if (!isFinite(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
   
   // Format exam ID to display text (e.g., "202212" -> "2022年12月")
   const formatExamId = (examId: string): string => {
@@ -62,7 +147,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
     label: SECTION_LABELS[section],
     questions: questions.filter((q) => {
       const matchesSection = q.section === section;
-      const matchesExam = selectedExam === 'all' || q.id === selectedExam;
+      const matchesExam = !selectedExam || q.id === selectedExam;
       return matchesSection && matchesExam;
     }),
   }));
@@ -316,6 +401,34 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
 
   return (
     <div className="n2-frame">
+      {/* Hidden audio element */}
+      <audio
+        ref={audioRef}
+        src={currentAudioUrl}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleLoadedMetadata}
+        onEnded={() => setIsPlaying(false)}
+        onError={() => setAudioError(true)}
+        style={{ display: 'none' }}
+      />
+      {selectedSection === 'listening' && currentAudioUrl && !audioError && (
+        <div className="n2-audio-player">
+          <div className="n2-audio-controls">
+            <button className="n2-audio-btn" onClick={skipBackward}>-10s</button>
+            <button className="n2-audio-btn n2-audio-play" onClick={handleTogglePlay}>{isPlaying ? '⏸' : '▶'}</button>
+            <button className="n2-audio-btn" onClick={skipForward}>+10s</button>
+          </div>
+          <input
+            type="range"
+            className="n2-audio-seekbar"
+            min={0}
+            max={duration || 0}
+            value={currentTime}
+            onChange={handleSeek}
+          />
+          <div className="n2-audio-time">{formatAudioTime(currentTime)} / {formatAudioTime(duration)}</div>
+        </div>
+      )}
       {/* N2 Header */}
       <div className="n2-header">
         <div className="n2-header-top">
@@ -354,7 +467,6 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
               color: '#1a237e'
             }}
           >
-            <option value="all">全部</option>
             {uniqueExamIds.map((examId) => (
               <option key={examId} value={examId}>{formatExamId(examId)}</option>
             ))}
@@ -475,7 +587,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
           <div className="n2-question-card">
             <div className="n2-question-header">
               <span className="n2-question-section-badge">{currentSectionLabel}</span>
-              <span className="n2-question-number">問題 {currentIndex + 1}</span>
+              <span className="n2-question-number">問題 {currentQuestion.number ?? currentIndex + 1}</span>
             </div>
             <div className="n2-question-text">{currentQuestion.questionText}</div>
             <div className="n2-options">
@@ -664,7 +776,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                                 <div key={rq.globalIndex} className="n2-question-compact" style={{ marginTop: rqIdx === 0 ? '20px' : '0' }}>
                                   <div className="n2-question-line">
                                     <div className="n2-q-text-wrapper">
-                                      <span className="n2-q-number">{rq.globalIndex + 1}) </span>
+                                      <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
                                     </div>
                                   </div>
                                   <div className="n2-options-with-radio">
@@ -743,7 +855,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
-                                          <span className="n2-q-number">{rq.globalIndex + 1}) </span>
+                                          <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
                                           <span className="n2-q-text-label">
                                             {question ? parseFormattedText(question) : ''}
                                           </span>
@@ -824,7 +936,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
-                                          <span className="n2-q-number">{rq.globalIndex + 1}) </span>
+                                          <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
                                           <span className="n2-q-text-label">{question ? parseFormattedText(question) : ''}</span>
                                         </div>
                                       </div>
@@ -895,7 +1007,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
-                                          <span className="n2-q-number">{rq.globalIndex + 1}) </span>
+                                          <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
                                           <span className="n2-q-text-label">{question ? parseFormattedText(question) : ''}</span>
                                         </div>
                                       </div>
@@ -1198,7 +1310,14 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                             {q.section === 'listening' && q.script && (
                               <button
                                 className="n2-script-btn"
-                                onClick={() => setOpenScriptId(globalIndex)}
+                                onClick={() => {
+                                  setOpenScriptId(globalIndex);
+                                  const qq = questions[globalIndex];
+                                  if (qq?.section === 'listening') {
+                                    setSelectedSection('listening');
+                                    if (qq.id) setSelectedExam(String(qq.id));
+                                  }
+                                }}
                                 style={{ marginTop: '10px', marginBottom: '10px' }}
                               >
                                 スクリプト
@@ -1229,7 +1348,7 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                                   <img src={q.photoUrl} alt="question" style={{ maxWidth: '300px', maxHeight: '300px', height: 'auto', width: 'auto' }} />
                                 </div>
                               )}
-                              <div className={`n2-options-with-radio ${currentSubId === 6 || currentSubId === 1 || currentSubId === 2 ? 'n2-usage-options' : ''}`}>
+                              <div className={`n2-options-with-radio ${currentSubId === 6 ? 'n2-usage-options' : ''}`}>
                                 {q.options.map((opt, optIdx) => {
                                   // For sub_id=6, extract target word and underline it in options
                                   const targetWord = currentSubId === 6 ? extractTargetWord(q.questionText) : '';
@@ -1335,6 +1454,22 @@ function QuestionFrame({ questions, onReset }: QuestionFrameProps) {
                 {questions[openScriptId]?.script || 'スクリプトがありません'}
               </p>
             </div>
+            {scriptAudioUrl && !audioError && (
+              <div className="n2-script-audio-controls">
+                <button className="n2-audio-btn" onClick={skipBackward}>-10s</button>
+                <button className="n2-audio-btn n2-audio-play" onClick={handleTogglePlay}>{isPlaying ? '⏸' : '▶'}</button>
+                <button className="n2-audio-btn" onClick={skipForward}>+10s</button>
+                <div className="n2-script-audio-time">{formatAudioTime(currentTime)} / {formatAudioTime(duration)}</div>
+                <input
+                  type="range"
+                  className="n2-audio-seekbar"
+                  min={0}
+                  max={duration || 0}
+                  value={currentTime}
+                  onChange={handleSeek}
+                />
+              </div>
+            )}
           </div>
         </div>
       )}

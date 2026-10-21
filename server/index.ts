@@ -203,8 +203,15 @@ app.get('/api/questions', async (req, res) => {
       };
     });
 
+    // Build a map of exam id -> listening audio URL (if present in Supabase storage).
+    const examIds = Array.from(new Set((data || []).map((row: any) => String(row.id ?? '').trim()).filter(Boolean)));
+    const audioUrls: Record<string, string> = {};
+    for (const examId of examIds) {
+      audioUrls[examId] = `${supabaseUrl}/storage/v1/object/public/JLPTQuestions/JLPTN2_${examId}.mp3`;
+    }
+
     console.log('Transformed questions:', questions);
-    res.json({ questions });
+    res.json({ questions, audioUrls });
   } catch (err) {
     console.error('Error fetching questions:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';

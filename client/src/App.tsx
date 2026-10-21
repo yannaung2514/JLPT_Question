@@ -7,6 +7,7 @@ function App() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [n2Questions, setN2Questions] = useState<N2Question[]>([]);
+  const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
   const [pdfUploaded, setPdfUploaded] = useState(false);
 
   // Convert raw questions to N2 format
@@ -82,12 +83,14 @@ function App() {
       console.log('Response status:', res.status);
       
       const questions = res.data.questions;
+      const audioUrls = res.data.audioUrls || {};
       console.log('Questions array:', questions);
       console.log('Questions length:', questions?.length);
       
       if (questions && questions.length > 0) {
         console.log('Setting questions to state...');
         setN2Questions(questions);
+        setAudioUrls(audioUrls);
         console.log(`Loaded ${questions.length} questions from Supabase`);
         console.log('First question:', questions[0]);
       } else {
@@ -197,6 +200,7 @@ function App() {
         {pdfUploaded && (
           <QuestionFrame
             questions={n2Questions}
+            audioUrls={audioUrls}
             onReset={handleReset}
           />
         )}
