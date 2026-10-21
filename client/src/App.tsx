@@ -3,27 +3,19 @@ import axios from 'axios';
 import QuestionFrame from './components/QuestionFrame/QuestionFrame';
 import type { N2Question } from '../../shared/types';
 
-interface Question {
-  question: string;
-  options: string[];
-  answer: string;
-  explanation: string;
-}
-
 function App() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  const [questions, setQuestions] = useState<Question[]>([]);
   const [n2Questions, setN2Questions] = useState<N2Question[]>([]);
   const [pdfUploaded, setPdfUploaded] = useState(false);
 
   // Convert raw questions to N2 format
   const convertToN2Questions = (rawQuestions: any[]): N2Question[] => {
-    const sections: Array<'vocabulary' | 'grammar' | 'reading'> = ['vocabulary', 'grammar', 'reading'];
+    const sections: Array<'vocabulary' | 'grammar' | 'reading' | 'listening'> = ['vocabulary', 'grammar', 'reading', 'listening'];
     const difficulties: Array<'easy' | 'medium' | 'hard'> = ['easy', 'medium', 'hard'];
     
     return rawQuestions.map((q, index) => ({
-      id: index + 1,
+      id: String(q.id ?? index + 1),
       section: (q.section && sections.includes(q.section)) ? q.section : sections[index % sections.length],
       questionText: q.question,
       options: q.options,
@@ -55,19 +47,16 @@ function App() {
       console.log('Questions count:', rawQuestions?.length);
       
       if (rawQuestions && rawQuestions.length > 0) {
-        setQuestions(rawQuestions);
         setN2Questions(convertToN2Questions(rawQuestions));
       } else {
         console.log('No questions from API, creating empty JLPT format');
         const emptyQuestions = createEmptyJLPTFormat();
-        setQuestions(emptyQuestions);
         setN2Questions(convertToN2Questions(emptyQuestions));
       }
     } catch (err: any) {
       console.error('Upload error:', err);
       console.log('Creating empty JLPT format due to error');
       const emptyQuestions = createEmptyJLPTFormat();
-      setQuestions(emptyQuestions);
       setN2Questions(convertToN2Questions(emptyQuestions));
     } finally {
       setLoading(false);
@@ -94,7 +83,6 @@ function App() {
       
       if (questions && questions.length > 0) {
         console.log('Setting questions to state...');
-        setQuestions(questions);
         setN2Questions(questions);
         console.log(`Loaded ${questions.length} questions from Supabase`);
         console.log('First question:', questions[0]);
@@ -102,7 +90,6 @@ function App() {
         console.log('No questions found in Supabase or questions array is empty');
         console.log('Questions value:', questions);
         const emptyQuestions = createEmptyJLPTFormat();
-        setQuestions(emptyQuestions);
         setN2Questions(convertToN2Questions(emptyQuestions));
       }
     } catch (err: any) {
@@ -111,7 +98,6 @@ function App() {
       console.error('Error message:', err.message);
       alert(`Failed to load questions from database: ${err.message}`);
       const emptyQuestions = createEmptyJLPTFormat();
-      setQuestions(emptyQuestions);
       setN2Questions(convertToN2Questions(emptyQuestions));
     } finally {
       setLoading(false);
@@ -120,7 +106,6 @@ function App() {
   };
 
   const handleReset = () => {
-    setQuestions([]);
     setN2Questions([]);
     setFile(null);
     setPdfUploaded(false);
@@ -199,7 +184,7 @@ function App() {
                   // Add new question
                   const newQ = JSON.parse(value);
                   const newQuestion: N2Question = {
-                    id: prev.length + 1,
+                    id: `local_${Date.now()}_${prev.length + 1}`,
                     section: 'vocabulary', // Default section, can be customized
                     questionText: newQ.text,
                     options: newQ.options,

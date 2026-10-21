@@ -6,6 +6,7 @@ type N2Section = 'vocabulary' | 'grammar' | 'reading' | 'listening';
 interface N2Question {
   id?: string;
   sub_id?: number;
+  number?: number;
   section: N2Section;
   difficulty: 'easy' | 'medium' | 'hard' | string;
   questionText: string;
@@ -343,8 +344,20 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
   const currentSection = currentQuestion?.section || 'vocabulary';
   const currentSectionLabel = SECTION_LABELS[currentSection];
 
+  // Listening (聴解) section headers based on sub_id
+  const LISTENING_SECTION_HEADERS: Record<number, string> = {
+    1: '問題１では、まず質問を聞いてください。それから話を聞いて、問題用紙の１から４の中から最もよいものを一つ選んでください。',
+    2: '問題２では、まず質問を聞いてください。そのあと、問題用紙のせんたくしを読んでください。読む時間があります。それから話を聞いて、問題用紙の１から４の中から、最もよいものを一つ選んでください。',
+    3: '問題３では、問題用紙に何も印刷されていません。この問題は、全体としてどんな内容かを聞く問題です。話の前に質問はありません。まず話を聞いてください。それから、質問とせんたくしを聞きする返事を聞いてから３の中から、最もよいものを一つ選んでください。',
+    4: '問題４では、問題用紙に何も印刷されていません。まず文を聞いてください。それから、それに対する答えを１から４の中から、最もよいものを一つ選んでください。',
+    5: '問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。'
+  };
+
   // Section header text mapping based on sub_id
-  const getSectionHeaderText = (subId: number): string => {
+  const getSectionHeaderText = (subId: number, section?: N2Section): string => {
+    if (section === 'listening') {
+      return LISTENING_SECTION_HEADERS[subId] || '';
+    }
     const sectionHeaders: Record<number, string> = {
       1: '問題１______の語彙の読み方として最もよいものを、1・2・3・4 から一つ選びなさい。',
       2: '問題２______の語彙の読み方として最もよいものを、1・2・3・4 から一つ選びなさい。',
@@ -622,7 +635,6 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                       let readingQuestions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       let subId10Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       let subId11PassageShown = false;
-                      let subId11PassageText = '';
                       let subId11Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       let subId12PassageAText = '';
                       let subId12PassageBText = '';
@@ -648,7 +660,6 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                         if (q.sub_id === 11 && q.questionText && !subId11PassageShown) {
                           const { passage } = parseSubId10Text(q.questionText);
                           if (passage) {
-                            subId11PassageText = passage;
                             subId11PassageShown = true;
                           }
                         }
@@ -705,7 +716,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             <div key={globalIndex}>
                               {showSectionHeader && currentSubId && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId)}
+                                  {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
                               {/* Show passage */}
@@ -766,7 +777,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             <div key={globalIndex}>
                               {showSectionHeader && currentSubId && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId)}
+                                  {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
                               {/* Show all questions with (1), (2) labels */}
@@ -848,7 +859,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             <div key={globalIndex}>
                               {showSectionHeader && currentSubId && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId)}
+                                  {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
                               {subId11Questions.map((rq, rqIdx) => {
@@ -913,7 +924,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             <div key={globalIndex}>
                               {showSectionHeader && currentSubId && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId)}
+                                  {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
                               {subId12PassageAText && (
@@ -985,7 +996,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             <div key={globalIndex}>
                               {showSectionHeader && currentSubId && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId)}
+                                  {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
                               {firstQuestionData?.info && (
@@ -1043,7 +1054,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                             <div key={globalIndex}>
                               {showSectionHeader && currentSubId && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId)}
+                                  {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
                               {subId14Questions.map((rq) => {
@@ -1239,7 +1250,7 @@ function QuestionFrame({ questions, onReset, onUpdateQuestion }: QuestionFramePr
                           <div key={globalIndex}>
                             {showSectionHeader && currentSubId && (
                               <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                {getSectionHeaderText(currentSubId)}
+                                {getSectionHeaderText(currentSubId, q.section)}
                               </div>
                             )}
                             <div 

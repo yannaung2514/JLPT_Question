@@ -59,10 +59,12 @@ app.get('/api/questions', async (req, res) => {
       console.log('Processing row:', row);
       
       // Map section values to expected format
+      const rawType = String(row.type ?? '').trim().toLowerCase();
       let section = 'vocabulary';
-      if (row.type === '文法' || row.type === 'grammar') section = 'grammar';
-      else if (row.type === '読解' || row.type === 'reading') section = 'reading';
-      else if (row.type === '言葉' || row.type === 'vocabulary' || row.type === '語彙') section = 'vocabulary';
+      if (rawType.includes('文法') || rawType.includes('grammar')) section = 'grammar';
+      else if (rawType.includes('読解') || rawType.includes('reading')) section = 'reading';
+      else if (rawType.includes('聴解') || rawType.includes('listening') || rawType.includes('听力')) section = 'listening';
+      else if (rawType.includes('言葉') || rawType.includes('vocabulary') || rawType.includes('語彙')) section = 'vocabulary';
       
       // Handle NULL question column
       let questionText = '';
