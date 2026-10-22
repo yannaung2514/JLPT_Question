@@ -596,6 +596,29 @@
   letter-spacing: 0.5px;
 }
 
+/* `<strong>` inside the explanation body must stay inline (the label above is the block one) */
+.n2-explanation p strong {
+  display: inline;
+  margin-bottom: 0;
+  color: inherit;
+  font-size: inherit;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.n2-explanation p u,
+.n2-correct-answer u,
+.n2-question-text u {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+}
+
+.n2-explanation p strong,
+.n2-correct-answer strong,
+.n2-question-text strong {
+  font-weight: 700;
+}
+
 .n2-explanation p {
   margin: 0;
   color: var(--n2-text);
@@ -1218,6 +1241,24 @@
   white-space: normal;
 }
 
+.n2-q-text-label u {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+}
+
+.n2-q-text-label strong {
+  font-weight: 700;
+}
+
+.n2-target-word u {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+}
+
+.n2-target-word strong {
+  font-weight: 700;
+}
+
 .n2-target-word {
   font-size: 15px;
   font-weight: 500;
@@ -1378,6 +1419,17 @@
   flex: 1;
   font-weight: 500;
   line-height: 1.6;
+}
+
+.n2-opt-label u,
+.n2-option-text u {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+}
+
+.n2-opt-label strong,
+.n2-option-text strong {
+  font-weight: 700;
 }
 
 /* ===== Sub ID 6 - Usage Question Format ===== */
@@ -2006,6 +2058,34 @@
   overflow-y: auto;
   background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
 }
+/* ===== Sub-ID 14 Reference Photo (語彙 N2) ===== */
+.n2-sub14-photo-wrapper {
+  display: flex;
+  justify-content: center;
+  margin: 28px 0 8px;
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  overflow-x: auto;
+}
+
+.n2-sub14-photo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+  .n2-sub14-photo-wrapper {
+    padding: 10px;
+    margin: 20px 0 8px;
+  }
+}
+
+
 
 .n2-script-text {
   font-size: 13px;

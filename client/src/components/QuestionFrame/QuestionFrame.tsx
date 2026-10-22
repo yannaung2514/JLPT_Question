@@ -26,6 +26,7 @@ const SECTION_LABELS: Record<N2Section, string> = {
 
 interface QuestionFrameProps {
   questions: N2Question[];
+  audioUrls?: Record<string, string>;
   onReset?: () => void;
 }
 
@@ -239,7 +240,12 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
         return highlightedText.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
       }
       // If it's just a text object
-      if (parsed.text) return parsed.text.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
+      if (parsed.text) {
+        let jsonText = String(parsed.text);
+        jsonText = jsonText.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+        jsonText = jsonText.replace(/__(.+?)__/g, '<u>$1</u>');
+        return jsonText.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
+      }
     } catch {
       // Not JSON, continue with markdown parsing
     }
@@ -367,10 +373,16 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
     2: { title: '問題２', header: '問題２では、まず質問を聞いてください。そのあと、問題用紙のせんたくしを読んでください。読む時間があります。それから話を聞いて、問題用紙の１から４の中から、最もよいものを一つ選んでください。' },
     3: { title: '問題３', header: '問題３では、問題用紙に何も印刷されていません。この問題は、全体としてどんな内容かを聞く問題です。話の前に質問はありません。まず話を聞いてください。それから、質問とせんたくしを聞きする返事を聞いてから３の中から、最もよいものを一つ選んでください。' },
     4: { title: '問題４', header: '問題４では、問題用紙に何も印刷されていません。まず文を聞いてください。それから、それに対する答えを１から３の中から、最もよいものを一つ選んでください。' },
-    5: { title: '問題５', header: '問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。' },
-    51: { title: '１番', header: '問題用紙に何もいんさっされていません。まず話をい聞いてください。それから、質問とせんたくしを聞いて、１から４の中から、最もよいものを一つ選んでください。' },
-    52: { title: '２番', header: 'まず話を聞いてください。それから、ニつの質問を聞いて、それぞれ問題用紙の1から4の中から最もよいものを一つ選んてください。' }
+    5: { title: '問題５', header: '問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。' }
   };
+
+  // Compute sub_id=9 question number range from DB number column (filtered by selected exam)
+  const subId9Numbers = questions
+    .filter((q) => q.sub_id === 9 && q.id === (selectedExam || uniqueExamIds[0]))
+    .map((q) => q.number)
+    .filter((n): n is number => typeof n === 'number');
+  const subId9Start = subId9Numbers.length > 0 ? Math.min(...subId9Numbers) : 48;
+  const subId9End = subId9Numbers.length > 0 ? Math.max(...subId9Numbers) : 51;
 
   // Section header text mapping based on sub_id
   const getListeningSectionTitle = (subId: number): string => {
@@ -379,6 +391,9 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   const getSectionHeaderText = (subId: number, section?: N2Section): string => {
     if (section === 'listening') {
       return LISTENING_SECTION_HEADERS[subId]?.header || '';
+    }
+    if (subId === 9) {
+      return `問題９ 次の文章を読んで・、文章全体の内容を考えて、${subId9Start}から${subId9End}の中に入る最もよいものを、1・2・3・4から一つ選びなさい。`;
     }
     const sectionHeaders: Record<number, string> = {
       1: '問題１______の語彙の読み方として最もよいものを、1・2・3・4 から一つ選びなさい。',
@@ -389,14 +404,28 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
       6: '問題６ 次の言葉の使い方として最もよいものを、1・2・3・4 から一 つ選びなさい 。',
       7: '問題７ 次の文の ( ) に人れるのに最もよいものを、 1・2・3・4 から一つ選びなさい 。',
       8: '問題８ 次の文のに☆人る最もよいものを、 1・2・3・4 から一つ選びなさ い 。',
-      9: '問題９ 次の文章を読んで・、文章全体の内容を考えて、48から51の中に入る最もよいものを、1・2・3・4から一つ選びなさい。',
-      10: '問題１０ 次のいからにらいの文章を読んで、後の問いに対する答えとして最もよいものを、1・2・3・4から一つ選びなさい。',
-      11: '問題１１ 次のいからにらいの文章を読んで、後の問いに対する答えとして最もよいものを、1・2・3・4から一つ選びなさい。',
+      10: '問題１０ 次の１から５の文章を読んで、後の問いに対する答えとして最もよいものを、1・2・3・4から一つ選びなさい。',
+      11: '問題１１ 次の１から３の文章を読んで、後の問いに対する答えとして最もよいものを、1・2・3・4から一つ選びなさい。',
       12: '問題１２ 次のAとBの文章を読んで、後の問いに対する答えとして最もよいものを、1・2・3・4から一つ選びなさい',
       13: '問題１３次の文章を読んで、後の問いに対する答えとして最もよいものを、1・2・3・4からーっ選びなさい。',
       14: '問題１４ 右のべーシは、あるテニススクールの人会案内てある。下の問いに対する答えとして最もよいものを、1・2・3・4から一つ選びなさい。'
     };
     return sectionHeaders[subId] || '';
+  };
+
+  // 問題5 (sub_id=5) の 1番/2番/3番 ヘッダーを number 列から選択:
+  // number=1 -> 1番, number=2 -> 2番, number=31/32 -> 3番
+  // ヘッダーテキストは桁数で決定: 1桁 (1,2) -> 1桁用, 2桁 (31,32) -> 2桁用
+  const getListeningSub5BangHeader = (number?: number): { title: string; header: string } | null => {
+    if (number === undefined) return null;
+    const bang = number >= 10 ? Math.floor(number / 10) : number;
+    const isTwo = String(number).length === 2;
+    return {
+      title: `${bang}番`,
+      header: isTwo
+        ? 'まず話を聞いてください。それから、ニつの質問を聞いて、それぞれ問題用紙の1から4の中から最もよいものを一つ選んてください。'
+        : '問題用紙に何もいんさっされていません。まず話をい聞いてください。それから、質問とせんたくしを聞いて、１から４の中から、最もよいものを一つ選んでください。',
+    };
   };
 
   return (
@@ -415,7 +444,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
         <div className="n2-audio-player">
           <div className="n2-audio-controls">
             <button className="n2-audio-btn" onClick={skipBackward}>-10s</button>
-            <button className="n2-audio-btn n2-audio-play" onClick={handleTogglePlay}>{isPlaying ? '⏸' : '▶'}</button>
+            <button className="n2-audio-btn n2-audio-play" onClick={handleTogglePlay}>{isPlaying ? '?' : '?'}</button>
             <button className="n2-audio-btn" onClick={skipForward}>+10s</button>
           </div>
           <input
@@ -589,7 +618,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
               <span className="n2-question-section-badge">{currentSectionLabel}</span>
               <span className="n2-question-number">問題 {currentQuestion.number ?? currentIndex + 1}</span>
             </div>
-            <div className="n2-question-text">{currentQuestion.questionText}</div>
+            <div className="n2-question-text" dangerouslySetInnerHTML={{ __html: parseFormattedText(currentQuestion.questionText) }} />
             <div className="n2-options">
               {currentQuestion.options.map((opt, optIdx) => {
                 const isSelected = answers[currentIndex] === optIdx;
@@ -613,7 +642,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                     />
                     <span className="n2-radio-custom"></span>
                     <span className="n2-option-label">{getOptionLabel(optIdx)}</span>
-                    <span className="n2-option-text">{opt}</span>
+                    <span className="n2-option-text" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
                   </label>
                 );
               })}
@@ -672,7 +701,9 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                     </div>
                   ) : (
                     (() => {
-                      let lastSubId: number | null | undefined = null;
+                      let lastKey: string | null = null;
+                      let lastBangTitle: string | null = null;
+                      let sub5MainShown = false;
                       let readingPassageShown = false;
                       let readingPassageText = '';
                       let readingQuestions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
@@ -686,6 +717,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                       let subId13PassageText = '';
                       let subId13Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       let subId14GridText = '';
+                      let subId14PhotoUrl = '';
                       let subId14Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       
                       // First pass: collect reading comprehension data
@@ -726,6 +758,9 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                           subId13Questions.push({ q, globalIndex: questions.indexOf(q) });
                         }
                         if (q.sub_id === 14) {
+                          if (q.photoUrl && !subId14PhotoUrl) {
+                            subId14PhotoUrl = q.photoUrl;
+                          }
                           // Extract grid from question text (format: "grid:..." or JSON with grid field)
                           try {
                             const parsed = JSON.parse(q.questionText);
@@ -745,8 +780,15 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                       return sectionQuestions.map((q) => {
                         const globalIndex = questions.indexOf(q);
                         const currentSubId = q.sub_id;
-                        const showSectionHeader = currentSubId !== lastSubId;
-                        lastSubId = currentSubId;
+                        // For 問題5 (sub_id=5), group by digit length of number:
+                        // 1 digit (1,2,3) -> group 5-1, 2 digits (31,32,33) -> group 5-2
+                        let sub5Bang: number | null = null;
+                        if (currentSubId === 5 && q.section === 'listening' && q.number != null) {
+                          sub5Bang = String(q.number).length === 1 ? 1 : 2;
+                        }
+                        const groupKey = sub5Bang !== null ? `5-${sub5Bang}` : String(currentSubId);
+                        const showSectionHeader = groupKey !== lastKey;
+                        lastKey = groupKey;
                         
                         // For sub_id=9, show passage once, then show all options together
                         if (currentSubId === 9) {
@@ -856,9 +898,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label">
-                                            {question ? parseFormattedText(question) : ''}
-                                          </span>
+                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
                                       <div className={`n2-options-with-radio ${currentSubId === 10 ? 'n2-usage-options' : ''}`} style={currentSubId === 10 ? { flexDirection: 'column', alignItems: 'flex-start' } : {}}>
@@ -905,10 +945,14 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   {getSectionHeaderText(currentSubId, q.section)}
                                 </div>
                               )}
-                              {subId11Questions.map((rq, rqIdx) => {
-                                const { passage, info, warning, question } = parseSubId10Text(rq.q.questionText);
-                                const partNumber = Math.floor(rqIdx / 2) + 1;
-                                const isPartStart = rqIdx % 2 === 0;
+                              {(() => {
+                                let partCounter = 0;
+                                return subId11Questions.map((rq, rqIdx) => {
+                                  const { passage, info, warning, question } = parseSubId10Text(rq.q.questionText);
+                                  // Part boundary is determined by passage presence within the same (id, sub_id) group
+                                  const isPartStart = !!passage;
+                                  if (isPartStart) partCounter++;
+                                  const partNumber = partCounter > 0 ? partCounter : 1;
                                 return (
                                   <div key={rq.globalIndex}>
                                     {isPartStart && (
@@ -937,7 +981,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label">{question ? parseFormattedText(question) : ''}</span>
+                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
                                       <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -953,7 +997,8 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     </div>
                                   </div>
                                 );
-                              })}
+                              });
+                                })()}
                             </div>
                           );
                         }
@@ -1008,7 +1053,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label">{question ? parseFormattedText(question) : ''}</span>
+                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
                                       <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -1066,8 +1111,8 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
-                                          <span className="n2-q-number">{rq.q.number}) </span>
-                                          <span className="n2-q-text-label">{question ? parseFormattedText(question) : ''}</span>
+                                          <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
+                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
                                       <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -1117,8 +1162,8 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
-                                          <span className="n2-q-number">{rq.q.number}) </span>
-                                          <span className="n2-q-text-label">{question ? parseFormattedText(question) : ''}</span>
+                                          <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
+                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
                                       <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -1135,175 +1180,59 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   </div>
                                 );
                               })}
-                              {
-                                <div style={{ fontFamily: 'sans-serif', maxWidth: '750px', margin: '20px auto', padding: '24px', border: '2px solid #000', backgroundColor: '#fff', color: '#000' }}>
-
-                                  {/* Title */}
-                                  <h1 style={{ textAlign: 'center', fontSize: '22px', fontWeight: 'bold', margin: '0 0 20px 0', paddingBottom: '10px', borderBottom: '1px solid #000' }}>
-                                    秋原テニススクール入会案内
-                                  </h1>
-
-                                  {/* Course Info */}
-                                  <div style={{ marginBottom: '20px' }}>
-                                    <h2 style={{ fontSize: '15px', fontWeight: 'bold', borderLeft: '4px solid #000', paddingLeft: '8px', margin: '0 0 8px 0' }}>
-                                      コース・クラスについて
-                                    </h2>
-                                    <p style={{ fontSize: '13px', lineHeight: '1.6', margin: '0 0 10px 0' }}>
-                                      以下の四つのコースの中から、ご希望の曜日、時間のクラスをお選びいただけます。<br />
-                                      曜日、時間については、別紙をご確認ください。中学生以上から受講が可能です。<br />
-                                      各コースの 1 クラスの定員 : 10 名 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; レッスン時間 : 60 分
-                                    </p>
-
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} border={1} cellPadding={8}>
-                                      <thead>
-                                        <tr style={{ backgroundColor: '#f9f9f9' }}>
-                                          <th style={{ textAlign: 'center', width: '50%' }}>コース</th>
-                                          <th style={{ textAlign: 'center', width: '50%' }}>受講料 (週一回、一ヶ月分)</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>A. 平日昼間 (初心者)</td>
-                                          <td style={{ textAlign: 'center' }}>8,800 円</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>B. 平日昼間 (中・上級者)</td>
-                                          <td style={{ textAlign: 'center' }}>12,000 円</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>C. 平日夜間・土日 (初心者)</td>
-                                          <td style={{ textAlign: 'center' }}>9,300 円</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>D. 平日夜間・土日 (中・上級者)</td>
-                                          <td style={{ textAlign: 'center' }}>12,500 円</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-
-                                  {/* Payment Information */}
-                                  <div style={{ marginBottom: '20px' }}>
-                                    <h2 style={{ fontSize: '15px', fontWeight: 'bold', borderLeft: '4px solid #000', paddingLeft: '8px', margin: '0 0 8px 0' }}>
-                                      入会時のお支払い
-                                    </h2>
-                                    <p style={{ fontSize: '13px', lineHeight: '1.6', margin: 0 }}>
-                                      ご入会の際に、入会金 (6,600 円)、年会費 (2,200 円)、受講料 1 ヶ月分を現金でお支払いください。<br />
-                                      受講料は、2 ヶ月目から口座引き落としになります。
-                                    </p>
-                                  </div>
-
-                                  {/* Discount System */}
-                                  <div style={{ marginBottom: '20px' }}>
-                                    <h2 style={{ fontSize: '15px', fontWeight: 'bold', borderLeft: '4px solid #000', paddingLeft: '8px', margin: '0 0 8px 0' }}>
-                                      割引制度
-                                    </h2>
-                                    <p style={{ fontSize: '13px', margin: '0 0 10px 0' }}>
-                                      複数の割引は同時に適応できません。一番条件のいい割引が一つ適用されます。
-                                    </p>
-
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} border={1} cellPadding={8}>
-                                      <thead>
-                                        <tr style={{ backgroundColor: '#f9f9f9' }}>
-                                          <th style={{ textAlign: 'center', width: '30%' }}>種類</th>
-                                          <th style={{ textAlign: 'center', width: '35%' }}>適応対象</th>
-                                          <th style={{ textAlign: 'center', width: '35%' }}>割引内容</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>学生割引</td>
-                                          <td style={{ textAlign: 'center' }}>中学生、高校生</td>
-                                          <td style={{ textAlign: 'center' }}>毎月の受講料を 10% 割引</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>複数のコース・クラス割引</td>
-                                          <td style={{ textAlign: 'center' }}>複数コース・クラスを受講する方</td>
-                                          <td style={{ textAlign: 'center' }}>二つ目以降のコース・クラス<br />毎月の受講料を 50% 割引</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>家族割引</td>
-                                          <td style={{ textAlign: 'center' }}>ご家族に本スクールの受講生がいる方</td>
-                                          <td style={{ textAlign: 'center' }}>入会金無料、毎月の受講料を 15% 割引</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </div>
-
-                                  {/* Transfer Policy */}
-                                  <div style={{ marginBottom: '20px' }}>
-                                    <h2 style={{ fontSize: '15px', fontWeight: 'bold', borderLeft: '4px solid #000', paddingLeft: '8px', margin: '0 0 8px 0' }}>
-                                      振り替え制度
-                                    </h2>
-                                    <p style={{ fontSize: '13px', margin: 0 }}>
-                                      同じコースの他の曜日に振り替えて受講する場合フロントで事前にご予約ください。
-                                    </p>
-                                  </div>
-
-                                  {/* Procedures */}
-                                  <div style={{ marginBottom: '20px' }}>
-                                    <h2 style={{ fontSize: '15px', fontWeight: 'bold', borderLeft: '4px solid #000', paddingLeft: '8px', margin: '0 0 8px 0' }}>
-                                      各種手続き
-                                    </h2>
-                                    <p style={{ fontSize: '13px', margin: '0 0 10px 0' }}>
-                                      以下の場合は、期日までにフロントでお手続きください。
-                                    </p>
-
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }} border={1} cellPadding={8}>
-                                      <tbody>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>
-                                            変更 (コースを変更したり、同じコース内で<br />曜日・時間を変更する場合)
-                                          </td>
-                                          <td style={{ textAlign: 'center' }}>変更したい月の前月 10 日まで</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>退会 (スクールをやめる場合)</td>
-                                          <td style={{ textAlign: 'center' }}>最終受講の前月月末まで</td>
-                                        </tr>
-                                        <tr>
-                                          <td style={{ textAlign: 'center' }}>休会 (スクールを 1 ヶ月以上休む場合)</td>
-                                          <td style={{ textAlign: 'center' }}>休会したい月の前月 20 日まで</td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                    <p style={{ fontSize: '12px', marginTop: '6px' }}>
-                                      ※手数料 550 円がかかります (入会後 3 ヶ月以内に手続きをする場合は無料)。
-                                    </p>
-                                  </div>
-
-                                  {/* Footer Contact Info */}
-                                  <div style={{ borderTop: '1px solid #000', paddingTop: '12px', fontSize: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-                                    <div>
-                                      電話 : 062-241-3998 (9 時〜22 時)
-                                    </div>
-                                    <div style={{ textAlign: 'right' }}>
-                                      〒433-0010 北高市朝中町 27<br />
-                                      ホームページ : http://www.akiharayuukibui-tennis.jp
-                                    </div>
-                                  </div>
-
+                              {subId14PhotoUrl && (
+                                <div className="n2-sub14-photo-wrapper">
+                                  <img
+                                    src={subId14PhotoUrl}
+                                    alt="問題文の参考図（語彙 N2）"
+                                    className="n2-sub14-photo"
+                                    loading="lazy"
+                                  />
                                 </div>
-                              }
+                              )}
                             </div>
                           );
                         }
                         
                         return (
                           <div key={globalIndex}>
-                            {showSectionHeader && currentSubId && (
+                            {currentSubId && q.section === 'listening' && currentSubId === 5 && (
+                              <>
+                                {(() => {
+                                  const isFirstSub5 = !sub5MainShown;
+                                  if (isFirstSub5) sub5MainShown = true;
+
+                                  const bangHeader = getListeningSub5BangHeader(q.number);
+                                  const bangTitle = bangHeader ? bangHeader.title : '';
+                                  const shouldShowBang = isFirstSub5 || bangTitle !== lastBangTitle;
+                                  lastBangTitle = bangTitle;
+
+                                  return (
+                                    <>
+                                      {isFirstSub5 && (
+                                        <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
+                                          <div style={{ marginBottom: '5px' }}>問題５</div>
+                                          <div style={{ marginBottom: '10px', fontWeight: 'normal', fontSize: '14px' }}>
+                                            問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。
+                                          </div>
+                                        </div>
+                                      )}
+                                      {bangHeader && shouldShowBang && (
+                                        <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
+                                          <div style={{ marginBottom: '5px' }}>{bangTitle}</div>
+                                          {bangHeader.header && (
+                                            <div style={{ marginBottom: '10px', fontSize: '14px' }}>{bangHeader.header}</div>
+                                          )}
+                                        </div>
+                                      )}
+                                    </>
+                                  );
+                                })()}
+                              </>
+                            )}
+                            {currentSubId && q.section === 'listening' && currentSubId !== 5 && showSectionHeader && (
                               <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                {q.section === 'listening' && currentSubId === 51 && (
-                                  <>
-                                    <div style={{ marginBottom: '5px' }}>問題５</div>
-                                    <div style={{ marginBottom: '10px', fontWeight: 'normal', fontSize: '14px' }}>
-                                      問題５では、長めの話を聞きます。この問題には練習はありません。問題用紙にメモをとってもかまいません。
-                                    </div>
-                                  </>
-                                )}
-                                {q.section === 'listening' && (
-                                  <div style={{ marginBottom: '5px' }}>{getListeningSectionTitle(currentSubId)}</div>
-                                )}
+                                <div style={{ marginBottom: '5px' }}>{getListeningSectionTitle(currentSubId)}</div>
                                 {getSectionHeaderText(currentSubId, q.section)}
                               </div>
                             )}
@@ -1329,7 +1258,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                             >
                               <div className="n2-question-line">
                                 <div className="n2-q-text-wrapper">
-                                <span className="n2-q-number">{(q.number ?? globalIndex + 1)}) </span>
+                                <span className="n2-q-number">{currentSubId === 5 && q.section === 'listening' && q.number != null ? (q.number >= 10 ? q.number % 10 : q.number) : (q.number ?? globalIndex + 1)} </span>
                                   {currentSubId === 6 ? (
                                     <span 
                                       className="n2-target-word"
@@ -1348,7 +1277,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   <img src={q.photoUrl} alt="question" style={{ maxWidth: '300px', maxHeight: '300px', height: 'auto', width: 'auto' }} />
                                 </div>
                               )}
-                              <div className={`n2-options-with-radio ${currentSubId === 6 ? 'n2-usage-options' : ''}`}>
+                              <div className={`n2-options-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-options' : ''}`}>
                                 {q.options.map((opt, optIdx) => {
                                   // For sub_id=6, extract target word and underline it in options
                                   const targetWord = currentSubId === 6 ? extractTargetWord(q.questionText) : '';
@@ -1357,7 +1286,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     : parseFormattedText(opt);
                                   
                                   return (
-                                    <label key={optIdx} className={`n2-option-with-radio ${currentSubId === 6 ? 'n2-usage-option' : ''}`}>
+                                    <label key={optIdx} className={`n2-option-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-option' : ''}`}>
                                       <input
                                         type="radio"
                                         name={`question-${globalIndex}`}
@@ -1372,7 +1301,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                       />
                                       <span className="n2-radio-custom"></span>
                                       <span className="n2-opt-num">{optIdx + 1}</span>
-                                      {currentSubId !== 3 && currentSubId !== 4 && currentSubId !== 51 && (
+                                      {currentSubId !== 51 && (
                                         <span 
                                           className="n2-opt-label"
                                           dangerouslySetInnerHTML={{ __html: optionHtml }}
