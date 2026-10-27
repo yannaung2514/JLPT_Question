@@ -444,7 +444,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
         <div className="n2-audio-player">
           <div className="n2-audio-controls">
             <button className="n2-audio-btn" onClick={skipBackward}>-10s</button>
-            <button className="n2-audio-btn n2-audio-play" onClick={handleTogglePlay}>{isPlaying ? '?' : '?'}</button>
+            <button className="n2-audio-btn n2-audio-play" onClick={handleTogglePlay}>{isPlaying ? '⏸' : '▶'}</button>
             <button className="n2-audio-btn" onClick={skipForward}>+10s</button>
           </div>
           <input
@@ -1277,7 +1277,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   <img src={q.photoUrl} alt="question" style={{ maxWidth: '300px', maxHeight: '300px', height: 'auto', width: 'auto' }} />
                                 </div>
                               )}
-                              <div className={`n2-options-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-options' : ''}`}>
+                              <div className={`n2-options-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-options' : (q.section === 'listening' && (currentSubId === 3 || currentSubId === 4)) ? 'n2-listening-sub3-options' : ''}`}>
                                 {q.options.map((opt, optIdx) => {
                                   // For sub_id=6, extract target word and underline it in options
                                   const targetWord = currentSubId === 6 ? extractTargetWord(q.questionText) : '';
@@ -1286,7 +1286,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     : parseFormattedText(opt);
                                   
                                   return (
-                                    <label key={optIdx} className={`n2-option-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-option' : ''}`}>
+                                    <label key={optIdx} className={`n2-option-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-option' : (q.section === 'listening' && (currentSubId === 3 || currentSubId === 4)) ? 'n2-listening-sub3-option' : ''}`}>
                                       <input
                                         type="radio"
                                         name={`question-${globalIndex}`}
@@ -1300,8 +1300,10 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                         className="n2-radio-input"
                                       />
                                       <span className="n2-radio-custom"></span>
-                                      <span className="n2-opt-num">{optIdx + 1}</span>
-                                      {currentSubId !== 51 && (
+                                      {currentSubId === 5 && q.section === 'listening' ? null : (
+                                        <span className="n2-opt-num">{optIdx + 1}</span>
+                                      )}
+                                      {currentSubId !== 51 && !((q.section === 'listening') && (currentSubId === 3 || currentSubId === 4)) && (
                                         <span 
                                           className="n2-opt-label"
                                           dangerouslySetInnerHTML={{ __html: optionHtml }}
