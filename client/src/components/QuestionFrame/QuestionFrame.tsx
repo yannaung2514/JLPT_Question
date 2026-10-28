@@ -1230,6 +1230,11 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                 })()}
                               </>
                             )}
+                            {currentSubId && q.section !== 'listening' && showSectionHeader && (
+                              <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
+                                {getSectionHeaderText(currentSubId, q.section)}
+                              </div>
+                            )}
                             {currentSubId && q.section === 'listening' && currentSubId !== 5 && showSectionHeader && (
                               <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
                                 <div style={{ marginBottom: '5px' }}>{getListeningSectionTitle(currentSubId)}</div>
