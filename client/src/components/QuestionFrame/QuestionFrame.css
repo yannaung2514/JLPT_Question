@@ -1214,6 +1214,12 @@
   width: 100%;
 }
 
+.n2-q-text-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .n2-q-number {
   flex-shrink: 0 !important;
   font-size: 16px;
@@ -1232,6 +1238,7 @@
 }
 
 .n2-q-text-label {
+  flex: 1;
   font-size: 16px;
   line-height: 1.8;
   color: #2d3748;
