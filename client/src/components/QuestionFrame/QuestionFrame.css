@@ -1257,6 +1257,26 @@
   font-weight: 700;
 }
 
+/* ===== Furigana (ruby) styling ===== */
+.n2-q-text-label ruby,
+.n2-opt-label ruby,
+.n2-option-text ruby,
+.n2-target-word ruby,
+.n2-q-text-default ruby {
+  ruby-align: space;
+  ruby-position: over;
+}
+
+.n2-q-text-label rt,
+.n2-opt-label rt,
+.n2-option-text rt,
+.n2-target-word rt,
+.n2-q-text-default rt {
+  font-size: 10px;
+  line-height: 1;
+  color: #666;
+}
+
 .n2-target-word u {
   text-decoration: underline;
   text-decoration-thickness: 1.5px;

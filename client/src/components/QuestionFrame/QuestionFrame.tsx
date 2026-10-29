@@ -254,6 +254,8 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
     let parsed = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     // Convert __text__ to <u>text</u>
     parsed = parsed.replace(/__(.+?)__/g, '<u>$1</u>');
+    // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji)
+    parsed = parsed.replace(/([^\s{]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
     // Convert \n to <br> with left indentation (2 ideographic spaces for Japanese)
     parsed = parsed.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
     return parsed;
