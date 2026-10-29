@@ -1365,9 +1365,8 @@
 
 /* ===== Options with Radio Buttons ===== */
 .n2-options-with-radio {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
   padding-left: 0;
   margin-top: 4px;
@@ -1382,8 +1381,6 @@
   border-radius: 8px;
   background: transparent;
   border: none;
-  flex: 1;
-  min-width: 180px;
 }
 
 .n2-option-with-radio input[type="radio"],
