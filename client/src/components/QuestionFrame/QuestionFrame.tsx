@@ -236,14 +236,18 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
           new RegExp(parsed.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
           `<strong><u>${parsed.target}</u></strong>`
         );
+        // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji)
+        const withFurigana = highlightedText.replace(/([^\s{]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
         // Convert \n to <br> with left indentation (2 ideographic spaces for Japanese)
-        return highlightedText.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
+        return withFurigana.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
       }
       // If it's just a text object
       if (parsed.text) {
         let jsonText = String(parsed.text);
         jsonText = jsonText.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         jsonText = jsonText.replace(/__(.+?)__/g, '<u>$1</u>');
+        // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji)
+        jsonText = jsonText.replace(/([^\s{]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
         return jsonText.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
       }
     } catch {
