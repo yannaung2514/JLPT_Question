@@ -1313,17 +1313,15 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                         className="n2-radio-input"
                                       />
                                       <span className="n2-radio-custom"></span>
-                                      <div className="n2-option-text-content">
-                                        {currentSubId === 5 && q.section === 'listening' ? null : (
-                                          <span className="n2-opt-num">{optIdx + 1}</span>
-                                        )}
-                                        {currentSubId !== 51 && !((q.section === 'listening') && (currentSubId === 3 || currentSubId === 4)) && (
-                                          <span 
-                                            className="n2-opt-label"
-                                            dangerouslySetInnerHTML={{ __html: optionHtml }}
-                                          />
-                                        )}
-                                      </div>
+                                      {currentSubId === 5 && q.section === 'listening' ? null : (
+                                        <span className="n2-opt-num">{optIdx + 1}</span>
+                                      )}
+                                      {currentSubId !== 51 && !((q.section === 'listening') && (currentSubId === 3 || currentSubId === 4)) && (
+                                        <span 
+                                          className="n2-opt-label"
+                                          dangerouslySetInnerHTML={{ __html: optionHtml }}
+                                        />
+                                      )}
                                     </label>
                                   );
                                 })}
