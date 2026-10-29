@@ -236,8 +236,10 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
           new RegExp(parsed.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'),
           `<strong><u>${parsed.target}</u></strong>`
         );
-        // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji)
-        const withFurigana = highlightedText.replace(/([^\s{]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+        // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji only).
+        // Only CJK kanji immediately before { are matched, so hiragana (e.g. の) breaks the match:
+        // 夏の野菜{やさい} → 夏の<ruby>野菜<rt>やさい</rt></ruby> (not 夏の野菜)
+        const withFurigana = highlightedText.replace(/([\u4e00-\u9fff\u3400-\u4dbf\uF900-\uFAff]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
         // Convert \n to <br> with left indentation (2 ideographic spaces for Japanese)
         return withFurigana.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
       }
@@ -246,8 +248,8 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
         let jsonText = String(parsed.text);
         jsonText = jsonText.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
         jsonText = jsonText.replace(/__(.+?)__/g, '<u>$1</u>');
-        // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji)
-        jsonText = jsonText.replace(/([^\s{]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+        // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji only).
+        jsonText = jsonText.replace(/([\u4e00-\u9fff\u3400-\u4dbf\uF900-\uFAff]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
         return jsonText.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
       }
     } catch {
@@ -258,8 +260,8 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
     let parsed = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     // Convert __text__ to <u>text</u>
     parsed = parsed.replace(/__(.+?)__/g, '<u>$1</u>');
-    // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji)
-    parsed = parsed.replace(/([^\s{]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+    // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji only).
+    parsed = parsed.replace(/([\u4e00-\u9fff\u3400-\u4dbf\uF900-\uFAff]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
     // Convert \n to <br> with left indentation (2 ideographic spaces for Japanese)
     parsed = parsed.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
     return parsed;
