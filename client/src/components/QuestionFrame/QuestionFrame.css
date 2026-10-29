@@ -103,7 +103,7 @@
 .n2-subtitle {
   font-size: 12px;
   opacity: 0.8;
-  margin-top: 2px;
+  margin-top: -2px;
   text-align: left;
 }
 
@@ -397,7 +397,7 @@
 
 .n2-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 16px 20px;
   border: 2px solid var(--n2-border);
@@ -1375,7 +1375,7 @@
 
 .n2-option-with-radio {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   cursor: pointer;
   padding: 8px 12px;
@@ -1402,6 +1402,7 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
+  margin-top: 3px;
   border: 2px solid #cbd5e0;
   border-radius: 50%;
   background: white;
@@ -1438,6 +1439,13 @@
   font-weight: 700;
   color: #667eea;
   min-width: 12px;
+  margin-right: 6px;
+}
+
+.n2-option-text-content {
+  flex: 1;
+  min-width: 0;
+  /* number and text flow as inline content; wrapped lines align under the number */
 }
 
 .n2-opt-label {
