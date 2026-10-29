@@ -397,7 +397,7 @@
 
 .n2-option {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 16px 20px;
   border: 2px solid var(--n2-border);
@@ -1375,7 +1375,7 @@
 
 .n2-option-with-radio {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   cursor: pointer;
   padding: 8px 12px;
@@ -1402,6 +1402,7 @@
   flex-shrink: 0;
   width: 16px;
   height: 16px;
+  margin-top: 2px;
   border: 2px solid #cbd5e0;
   border-radius: 50%;
   background: white;
