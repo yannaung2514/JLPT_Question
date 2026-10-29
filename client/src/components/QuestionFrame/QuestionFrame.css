@@ -1439,12 +1439,18 @@
   font-weight: 700;
   color: #667eea;
   min-width: 12px;
+  margin-right: 4px;
+}
+
+.n2-option-text-content {
+  flex: 1;
+  min-width: 0;
+  /* number and text flow as inline content; wrapped lines align under the number */
 }
 
 .n2-opt-label {
   font-size: 15px;
   color: #2d3748;
-  flex: 1;
   font-weight: 500;
   line-height: 1.6;
 }
