@@ -17,6 +17,7 @@ function App() {
     
     return rawQuestions.map((q, index) => ({
       id: String(q.id ?? index + 1),
+      type: typeof q.type === 'string' ? q.type : undefined,
       sub_id: typeof q.sub_id === 'number' ? q.sub_id : undefined,
       number: typeof q.number === 'number' ? q.number : undefined,
       section: (q.section && sections.includes(q.section)) ? q.section : sections[index % sections.length],

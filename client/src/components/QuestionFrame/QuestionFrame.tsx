@@ -5,6 +5,7 @@ type N2Section = 'vocabulary' | 'grammar' | 'reading' | 'listening';
 
 interface N2Question {
   id?: string;
+  type?: string;
   sub_id?: number;
   number?: number;
   section: N2Section;
@@ -24,6 +25,7 @@ interface QuestionNote {
   end: number;
   selectedText: string;
   note: string;
+  myanmarTranslation?: string;
   ruby?: string;
 }
 
@@ -40,10 +42,15 @@ interface NoteSelection {
 function getNoteTextOffset(root: HTMLElement, node: Node, offset: number): number | null {
   if (node.nodeType !== Node.TEXT_NODE || node.parentElement?.closest('rt')) return null;
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
   let total = 0;
   let current = walker.nextNode();
   while (current) {
+    if (current.nodeType === Node.ELEMENT_NODE) {
+      if ((current as Element).tagName === 'BR') total++;
+      current = walker.nextNode();
+      continue;
+    }
     if (current.parentElement?.closest('rt')) {
       current = walker.nextNode();
       continue;
@@ -58,11 +65,16 @@ function getNoteTextOffset(root: HTMLElement, node: Node, offset: number): numbe
 function applyQuestionNotes(html: string, notes: QuestionNote[], field: string): string {
   const container = document.createElement('div');
   container.innerHTML = html;
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
   const textNodes: Array<{ node: Text; start: number; end: number }> = [];
   let textOffset = 0;
   let current = walker.nextNode();
   while (current) {
+    if (current.nodeType === Node.ELEMENT_NODE) {
+      if ((current as Element).tagName === 'BR') textOffset++;
+      current = walker.nextNode();
+      continue;
+    }
     if (!current.parentElement?.closest('rt')) {
       const length = current.textContent?.length ?? 0;
       textNodes.push({ node: current as Text, start: textOffset, end: textOffset + length });
@@ -95,7 +107,13 @@ function applyQuestionNotes(html: string, notes: QuestionNote[], field: string):
       const rt = document.createElement('rt');
       rt.textContent = entry.note;
       ruby.append(rt);
-      fragment.append(ruby);
+      const noteWrapper = document.createElement('span');
+      noteWrapper.className = 'n2-note-wrapper';
+      if (entry.myanmarTranslation?.trim()) {
+        noteWrapper.dataset.myanmarTranslation = entry.myanmarTranslation;
+      }
+      noteWrapper.append(ruby);
+      fragment.append(noteWrapper);
       localOffset = noteEnd;
     });
     if (localOffset < (node.textContent?.length ?? 0)) {
@@ -105,6 +123,21 @@ function applyQuestionNotes(html: string, notes: QuestionNote[], field: string):
   });
 
   return container.innerHTML;
+}
+
+function getRenderedNoteText(root: HTMLElement): string {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  let text = '';
+  let current = walker.nextNode();
+  while (current) {
+    if (current.nodeType === Node.ELEMENT_NODE) {
+      if ((current as Element).tagName === 'BR') text += '\n';
+    } else if (!current.parentElement?.closest('rt')) {
+      text += current.textContent ?? '';
+    }
+    current = walker.nextNode();
+  }
+  return text;
 }
 
 const SECTION_LABELS: Record<N2Section, string> = {
@@ -138,8 +171,10 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   const [duration, setDuration] = useState(0);
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const noteMenuRef = useRef<HTMLDivElement>(null);
   const [noteSelection, setNoteSelection] = useState<NoteSelection | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [myanmarTranslation, setMyanmarTranslation] = useState('');
   const [noteError, setNoteError] = useState('');
   const [showNoteEditor, setShowNoteEditor] = useState(false);
   const [questionNotes, setQuestionNotes] = useState<Record<number, QuestionNote[]>>({});
@@ -275,6 +310,18 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
       setSubmitted(true);
     }
   }, [timeRemaining, timerActive, submitted, quizStarted]);
+
+  useEffect(() => {
+    if (!noteSelection || showNoteEditor) return;
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && noteMenuRef.current?.contains(event.target)) return;
+      setNoteSelection(null);
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown);
+  }, [noteSelection, showNoteEditor]);
 
   const formatTime = useCallback((seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -462,23 +509,22 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
     const end = getNoteTextOffset(target, range.endContainer, range.endOffset);
     if (start === null || end === null || end <= start) return;
 
-    const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
-    let visibleText = '';
-    let current = walker.nextNode();
-    while (current) {
-      if (!current.parentElement?.closest('rt')) visibleText += current.textContent ?? '';
-      current = walker.nextNode();
-    }
-    const selectedText = visibleText.slice(start, end);
+    const selectedText = getRenderedNoteText(target).slice(start, end);
     if (!selectedText || selection.toString() !== selectedText) return;
 
     const questionIndex = Number(target.dataset.noteIndex);
     const question = questions[questionIndex];
-    if (!question || !question.id || question.sub_id === undefined || question.number === undefined) return;
+    if (!question || !question.id || !question.type || question.sub_id === undefined || question.number === undefined) return;
 
     event.preventDefault();
     setNoteError('');
-    setNoteText('');
+    const existingNote = (questionNotes[questionIndex] ?? question.notes ?? []).find((entry) =>
+      entry.field === (target.dataset.noteField ?? 'questionText') &&
+      entry.start === start &&
+      entry.end === end
+    );
+    setNoteText(existingNote?.note ?? '');
+    setMyanmarTranslation(existingNote?.myanmarTranslation ?? '');
     setShowNoteEditor(false);
     setNoteSelection({
       questionIndex,
@@ -494,7 +540,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   const handleSaveNote = async () => {
     if (!noteSelection) return;
     const question = questions[noteSelection.questionIndex];
-    if (!question?.id || question.sub_id === undefined || question.number === undefined) {
+    if (!question?.id || !question.type || question.sub_id === undefined || question.number === undefined) {
       setNoteError('This question cannot be saved because its database identifier is missing.');
       return;
     }
@@ -507,6 +553,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: question.id,
+          type: question.type,
           sub_id: question.sub_id,
           number: question.number,
           field: noteSelection.field,
@@ -514,6 +561,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
           end: noteSelection.end,
           selectedText: noteSelection.selectedText,
           note: noteText,
+          myanmarTranslation,
         }),
       });
       const data = await response.json();
@@ -528,6 +576,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
       setNoteSelection(null);
       setShowNoteEditor(false);
       setNoteText('');
+      setMyanmarTranslation('');
     } catch (error) {
       setNoteError(error instanceof Error ? error.message : 'Failed to save note.');
     } finally {
@@ -1147,7 +1196,9 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                       <span className="n2-opt-num">{optIdx + 1}</span>
                                       <span 
                                         className="n2-opt-label"
-                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }}
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field={`option${optIdx + 1}`}
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(opt, rq.q, rq.globalIndex, `option${optIdx + 1}`) }}
                                       />
                                     </label>
                                   );
@@ -1206,28 +1257,38 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     {/* Show info text before passage */}
                                     {info && (
                                       <div style={{ marginBottom: '12px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333', fontStyle: 'italic' }}>
-                                        {parseFormattedText(info)}
+                                        <span data-note-index={rq.globalIndex} data-note-field="info" dangerouslySetInnerHTML={{ __html: renderWithNotes(info, rq.q, rq.globalIndex, 'info') }} />
                                       </div>
                                     )}
                                     {/* Show passage for this question */}
                                     {passage && (
                                       <div style={{ marginBottom: '12px', padding: '20px', border: '3px solid #000', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
-                                          dangerouslySetInnerHTML={{ __html: parseFormattedText(passage) }}
+                                        <pre
+                                          data-note-index={rq.globalIndex}
+                                          data-note-field="passage"
+                                          style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
+                                          dangerouslySetInnerHTML={{ __html: renderWithNotes(passage, rq.q, rq.globalIndex, 'passage') }}
                                         />
                                       </div>
                                     )}
                                     {/* Show warning text after passage */}
                                     {warning && (
                                       <div style={{ marginBottom: '16px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333' }}
-                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(warning) }}
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field="warning"
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(warning, rq.q, rq.globalIndex, 'warning') }}
                                       />
                                     )}
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
+                                          <span
+                                            className="n2-q-text-label"
+                                            data-note-index={rq.globalIndex}
+                                            data-note-field="question"
+                                            dangerouslySetInnerHTML={{ __html: renderWithNotes(question, rq.q, rq.globalIndex, 'question') }}
+                                          />
                                         </div>
                                       </div>
                                       <div className={`n2-options-with-radio ${currentSubId === 10 ? 'n2-usage-options' : ''}`} style={currentSubId === 10 ? { flexDirection: 'column', alignItems: 'flex-start' } : {}}>
@@ -1319,26 +1380,36 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     )}
                                     {info && (
                                       <div style={{ marginBottom: '12px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333', fontStyle: 'italic' }}>
-                                        {parseFormattedText(info)}
+                                        <span data-note-index={rq.globalIndex} data-note-field="info" dangerouslySetInnerHTML={{ __html: renderWithNotes(info, rq.q, rq.globalIndex, 'info') }} />
                                       </div>
                                     )}
                                     {isPartStart && passage && (
                                       <div style={{ marginBottom: '16px', padding: '20px', border: '3px solid #000', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
-                                          dangerouslySetInnerHTML={{ __html: parseFormattedText(passage) }}
+                                        <pre
+                                          data-note-index={rq.globalIndex}
+                                          data-note-field="passage"
+                                          style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
+                                          dangerouslySetInnerHTML={{ __html: renderWithNotes(passage, rq.q, rq.globalIndex, 'passage') }}
                                         />
                                       </div>
                                     )}
                                     {warning && (
                                       <div style={{ marginBottom: '16px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333' }}
-                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(warning) }}
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field="warning"
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(warning, rq.q, rq.globalIndex, 'warning') }}
                                       />
                                     )}
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
+                                          <span
+                                            className="n2-q-text-label"
+                                            data-note-index={rq.globalIndex}
+                                            data-note-field="question"
+                                            dangerouslySetInnerHTML={{ __html: renderWithNotes(question, rq.q, rq.globalIndex, 'question') }}
+                                          />
                                         </div>
                                       </div>
                                       <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -1409,8 +1480,15 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                 <div style={{ marginBottom: '12px' }}>
                                   <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>【A】</div>
                                   <div style={{ padding: '20px', border: '3px solid #000', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
-                                      dangerouslySetInnerHTML={{ __html: parseFormattedText(subId12PassageAText) }}
+                                    <pre
+                                      data-note-index={subId12Questions[0]?.globalIndex}
+                                      data-note-field="passageA"
+                                      style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
+                                      dangerouslySetInnerHTML={{
+                                        __html: subId12Questions[0]
+                                          ? renderWithNotes(subId12PassageAText, subId12Questions[0].q, subId12Questions[0].globalIndex, 'passageA')
+                                          : parseFormattedText(subId12PassageAText),
+                                      }}
                                     />
                                   </div>
                                 </div>
@@ -1419,8 +1497,15 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                 <div style={{ marginBottom: '16px' }}>
                                   <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: '#333' }}>【B】</div>
                                   <div style={{ padding: '20px', border: '3px solid #000', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                    <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
-                                      dangerouslySetInnerHTML={{ __html: parseFormattedText(subId12PassageBText) }}
+                                    <pre
+                                      data-note-index={subId12Questions[0]?.globalIndex}
+                                      data-note-field="passageB"
+                                      style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
+                                      dangerouslySetInnerHTML={{
+                                        __html: subId12Questions[0]
+                                          ? renderWithNotes(subId12PassageBText, subId12Questions[0].q, subId12Questions[0].globalIndex, 'passageB')
+                                          : parseFormattedText(subId12PassageBText),
+                                      }}
                                     />
                                   </div>
                                 </div>
@@ -1431,12 +1516,14 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   <div key={rq.globalIndex}>
                                     {info && (
                                       <div style={{ marginBottom: '12px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333', fontStyle: 'italic' }}>
-                                        {parseFormattedText(info)}
+                                        <span data-note-index={rq.globalIndex} data-note-field="info" dangerouslySetInnerHTML={{ __html: renderWithNotes(info, rq.q, rq.globalIndex, 'info') }} />
                                       </div>
                                     )}
                                     {warning && (
                                       <div style={{ marginBottom: '16px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333' }}
-                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(warning) }}
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field="warning"
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(warning, rq.q, rq.globalIndex, 'warning') }}
                                       />
                                     )}
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
@@ -1463,7 +1550,12 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                               <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
                                               <span className="n2-radio-custom"></span>
                                               <span className="n2-opt-num">{optIdx + 1}</span>
-                                              <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                                              <span
+                                                className="n2-opt-label"
+                                                data-note-index={rq.globalIndex}
+                                                data-note-field={`option${optIdx + 1}`}
+                                                dangerouslySetInnerHTML={{ __html: renderWithNotes(opt, rq.q, rq.globalIndex, `option${optIdx + 1}`) }}
+                                              />
                                             </label>
                                           );
                                         })}
@@ -1517,8 +1609,15 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                               )}
                               {subId13PassageText && (
                                 <div style={{ marginBottom: '16px', padding: '20px', border: '3px solid #000', background: '#fff', borderRadius: '8px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                                  <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
-                                    dangerouslySetInnerHTML={{ __html: parseFormattedText(subId13PassageText) }}
+                                  <pre
+                                    data-note-index={subId13Questions[0]?.globalIndex}
+                                    data-note-field="passage"
+                                    style={{ margin: 0, whiteSpace: 'pre-wrap', wordWrap: 'break-word', fontFamily: 'inherit', fontSize: '15px', lineHeight: '1.8' }}
+                                    dangerouslySetInnerHTML={{
+                                      __html: subId13Questions[0]
+                                        ? renderWithNotes(subId13PassageText, subId13Questions[0].q, subId13Questions[0].globalIndex, 'passage')
+                                        : parseFormattedText(subId13PassageText),
+                                    }}
                                   />
                                 </div>
                               )}
@@ -1528,14 +1627,21 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   <div key={rq.globalIndex}>
                                     {warning && (
                                       <div style={{ marginBottom: '16px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333' }}
-                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(warning) }}
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field="warning"
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(warning, rq.q, rq.globalIndex, 'warning') }}
                                       />
                                     )}
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
+                                          <span
+                                            className="n2-q-text-label"
+                                            data-note-index={rq.globalIndex}
+                                            data-note-field="question"
+                                            dangerouslySetInnerHTML={{ __html: renderWithNotes(question, rq.q, rq.globalIndex, 'question') }}
+                                          />
                                         </div>
                                       </div>
                                       <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -1550,7 +1656,12 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                               <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
                                               <span className="n2-radio-custom"></span>
                                               <span className="n2-opt-num">{optIdx + 1}</span>
-                                              <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                                              <span
+                                                className="n2-opt-label"
+                                                data-note-index={rq.globalIndex}
+                                                data-note-field={`option${optIdx + 1}`}
+                                                dangerouslySetInnerHTML={{ __html: renderWithNotes(opt, rq.q, rq.globalIndex, `option${optIdx + 1}`) }}
+                                              />
                                             </label>
                                           );
                                         })}
@@ -1601,20 +1712,31 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                 return (
                                   <div key={rq.globalIndex}>
                                     {info && (
-                                      <div style={{ marginBottom: '12px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333', fontStyle: 'italic' }}>
-                                        {parseFormattedText(info)}
-                                      </div>
+                                      <div
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field="info"
+                                        style={{ marginBottom: '12px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333', fontStyle: 'italic' }}
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(info, rq.q, rq.globalIndex, 'info') }}
+                                      />
                                     )}
                                     {warning && (
-                                      <div style={{ marginBottom: '16px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333' }}
-                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(warning) }}
+                                      <div
+                                        data-note-index={rq.globalIndex}
+                                        data-note-field="warning"
+                                        style={{ marginBottom: '16px', padding: '12px 16px', fontSize: '15px', lineHeight: '1.8', color: '#333' }}
+                                        dangerouslySetInnerHTML={{ __html: renderWithNotes(warning, rq.q, rq.globalIndex, 'warning') }}
                                       />
                                     )}
                                     <div className="n2-question-compact" style={{ marginTop: '0' }}>
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
+                                          <span
+                                            className="n2-q-text-label"
+                                            data-note-index={rq.globalIndex}
+                                            data-note-field="question"
+                                            dangerouslySetInnerHTML={{ __html: question ? renderWithNotes(question, rq.q, rq.globalIndex, 'question') : '' }}
+                                          />
                                         </div>
                                       </div>
                                       <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
@@ -1629,7 +1751,12 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                               <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
                                               <span className="n2-radio-custom"></span>
                                               <span className="n2-opt-num">{optIdx + 1}</span>
-                                              <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                                              <span
+                                                className="n2-opt-label"
+                                                data-note-index={rq.globalIndex}
+                                                data-note-field={`option${optIdx + 1}`}
+                                                dangerouslySetInnerHTML={{ __html: renderWithNotes(opt, rq.q, rq.globalIndex, `option${optIdx + 1}`) }}
+                                              />
                                             </label>
                                           );
                                         })}
@@ -1673,7 +1800,13 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                 <div className="n2-sub14-paper">
                                   <div
                                     className="n2-sub14-markdown"
-                                    dangerouslySetInnerHTML={{ __html: parseFormattedText(subId14MarkdownText) }}
+                                    data-note-index={subId14Questions[0]?.globalIndex}
+                                    data-note-field="markdown"
+                                    dangerouslySetInnerHTML={{
+                                      __html: subId14Questions[0]
+                                        ? renderWithNotes(subId14MarkdownText, subId14Questions[0].q, subId14Questions[0].globalIndex, 'markdown')
+                                        : parseFormattedText(subId14MarkdownText),
+                                    }}
                                   />
                                 </div>
                               )}
@@ -1940,6 +2073,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
       {noteSelection && !showNoteEditor && (
         <div
           className="n2-note-context-menu"
+          ref={noteMenuRef}
           style={{
             left: Math.min(noteSelection.x, window.innerWidth - 140),
             top: Math.min(noteSelection.y, window.innerHeight - 48),
@@ -1959,6 +2093,17 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
               value={noteText}
               onChange={(event) => setNoteText(event.target.value)}
               placeholder="Enter your note"
+            />
+            <label className="n2-note-translation-label" htmlFor="n2-note-myanmar-translation">
+              Myanmar translation (optional)
+            </label>
+            <textarea
+              id="n2-note-myanmar-translation"
+              className="n2-note-translation-input"
+              maxLength={500}
+              value={myanmarTranslation}
+              onChange={(event) => setMyanmarTranslation(event.target.value)}
+              placeholder="Enter Myanmar translation"
             />
             {noteError && <p className="n2-note-editor-error">{noteError}</p>}
             <div className="n2-note-editor-actions">

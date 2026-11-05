@@ -16,6 +16,7 @@ export type N2Section = 'vocabulary' | 'grammar' | 'reading' | 'listening';
 
 export interface N2Question {
   id: string;
+  type?: string;
   sub_id?: number;
   number?: number;
   section: N2Section;

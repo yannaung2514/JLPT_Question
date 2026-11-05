@@ -190,6 +190,7 @@ app.get('/api/questions', async (req, res) => {
 
       return {
         id: row.id,
+        type: String(row.type ?? '').trim(),
         questionText: questionText,
         notes: row.question && typeof row.question === 'object' && Array.isArray(row.question.notes)
           ? row.question.notes
@@ -224,21 +225,26 @@ app.get('/api/questions', async (req, res) => {
 
 app.post('/api/questions/notes', async (req, res) => {
   try {
-    const { id, sub_id, number, field, start, end, selectedText, note } = req.body ?? {};
+    const { id, type, sub_id, number, field, start, end, selectedText, note, myanmarTranslation } = req.body ?? {};
     const allowedFields = new Set([
       'questionText', 'passage', 'passageA', 'passageB', 'warning', 'question', 'info', 'markdown',
       'option1', 'option2', 'option3', 'option4',
     ]);
     const trimmedNote = typeof note === 'string' ? note.trim() : '';
+    const trimmedMyanmarTranslation =
+      typeof myanmarTranslation === 'string' ? myanmarTranslation.trim() : '';
 
     if (
       typeof id !== 'string' || !id.trim() ||
+      typeof type !== 'string' || !type.trim() ||
       !Number.isInteger(sub_id) || !Number.isInteger(number) ||
       typeof field !== 'string' || !allowedFields.has(field) ||
       !Number.isInteger(start) || start < 0 ||
       !Number.isInteger(end) || end <= start ||
       typeof selectedText !== 'string' || !selectedText ||
-      !trimmedNote || trimmedNote.length > 200
+      !trimmedNote || trimmedNote.length > 200 ||
+      (myanmarTranslation !== undefined && typeof myanmarTranslation !== 'string') ||
+      trimmedMyanmarTranslation.length > 500
     ) {
       res.status(400).json({ error: 'Invalid note data.' });
       return;
@@ -248,6 +254,7 @@ app.post('/api/questions/notes', async (req, res) => {
     const rowQuery = new URLSearchParams({
       select: 'question',
       id: `eq.${id}`,
+      type: `eq.${type}`,
       sub_id: `eq.${sub_id}`,
       number: `eq.${number}`,
     });
@@ -273,7 +280,12 @@ app.post('/api/questions/notes', async (req, res) => {
         ? { ...originalQuestion }
         : { text: typeof originalQuestion === 'string' ? originalQuestion : '' };
     const notes = Array.isArray(questionData.notes) ? [...questionData.notes] : [];
-    const overlapsExistingNote = notes.some((existing: any) =>
+    const notesWithoutMatchingRange = notes.filter((existing: any) =>
+      existing?.field !== field ||
+      existing.start !== start ||
+      existing.end !== end
+    );
+    const overlapsExistingNote = notesWithoutMatchingRange.some((existing: any) =>
       existing?.field === field &&
       Number.isInteger(existing.start) &&
       Number.isInteger(existing.end) &&
@@ -285,18 +297,20 @@ app.post('/api/questions/notes', async (req, res) => {
       return;
     }
 
-    notes.push({
+    notesWithoutMatchingRange.push({
       field,
       start,
       end,
       selectedText,
       note: trimmedNote,
+      myanmarTranslation: trimmedMyanmarTranslation,
       ruby: `<ruby>${selectedText}<rt>${trimmedNote}</rt></ruby>`,
     });
-    questionData.notes = notes;
+    questionData.notes = notesWithoutMatchingRange;
 
     const updateQuery = new URLSearchParams({
       id: `eq.${id}`,
+      type: `eq.${type}`,
       sub_id: `eq.${sub_id}`,
       number: `eq.${number}`,
     });
@@ -314,7 +328,7 @@ app.post('/api/questions/notes', async (req, res) => {
       res.status(404).json({ error: 'Question not found.' });
       return;
     }
-    res.json({ notes });
+    res.json({ notes: notesWithoutMatchingRange });
   } catch (err) {
     console.error('Error saving question note:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
