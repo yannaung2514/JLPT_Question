@@ -13,8 +13,98 @@ interface N2Question {
   options: string[];
   correctAnswer: string;
   explanation: string;
+  notes?: QuestionNote[];
   script?: string;
   photoUrl?: string;
+}
+
+interface QuestionNote {
+  field: string;
+  start: number;
+  end: number;
+  selectedText: string;
+  note: string;
+  ruby?: string;
+}
+
+interface NoteSelection {
+  questionIndex: number;
+  field: string;
+  start: number;
+  end: number;
+  selectedText: string;
+  x: number;
+  y: number;
+}
+
+function getNoteTextOffset(root: HTMLElement, node: Node, offset: number): number | null {
+  if (node.nodeType !== Node.TEXT_NODE || node.parentElement?.closest('rt')) return null;
+
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let total = 0;
+  let current = walker.nextNode();
+  while (current) {
+    if (current.parentElement?.closest('rt')) {
+      current = walker.nextNode();
+      continue;
+    }
+    if (current === node) return total + Math.min(offset, current.textContent?.length ?? 0);
+    total += current.textContent?.length ?? 0;
+    current = walker.nextNode();
+  }
+  return null;
+}
+
+function applyQuestionNotes(html: string, notes: QuestionNote[], field: string): string {
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const textNodes: Array<{ node: Text; start: number; end: number }> = [];
+  let textOffset = 0;
+  let current = walker.nextNode();
+  while (current) {
+    if (!current.parentElement?.closest('rt')) {
+      const length = current.textContent?.length ?? 0;
+      textNodes.push({ node: current as Text, start: textOffset, end: textOffset + length });
+      textOffset += length;
+    }
+    current = walker.nextNode();
+  }
+
+  const relevantNotes = notes
+    .filter((entry) => entry.field === field && entry.start >= 0 && entry.end > entry.start && entry.end <= textOffset)
+    .sort((a, b) => a.start - b.start);
+
+  textNodes.forEach(({ node, start, end }) => {
+    const applicableNotes = relevantNotes.filter((entry) => entry.start < end && entry.end > start);
+    if (applicableNotes.length === 0 || !node.parentNode) return;
+
+    const fragment = document.createDocumentFragment();
+    let localOffset = 0;
+    applicableNotes.forEach((entry) => {
+      const noteStart = Math.max(entry.start, start) - start;
+      const noteEnd = Math.min(entry.end, end) - start;
+      if (noteStart < localOffset) return;
+      if (noteStart > localOffset) {
+        fragment.append(node.textContent?.slice(localOffset, noteStart) ?? '');
+      }
+
+      const ruby = document.createElement('ruby');
+      ruby.className = 'n2-note-ruby';
+      ruby.append(node.textContent?.slice(noteStart, noteEnd) ?? '');
+      const rt = document.createElement('rt');
+      rt.textContent = entry.note;
+      ruby.append(rt);
+      fragment.append(ruby);
+      localOffset = noteEnd;
+    });
+    if (localOffset < (node.textContent?.length ?? 0)) {
+      fragment.append(node.textContent?.slice(localOffset) ?? '');
+    }
+    node.parentNode.replaceChild(fragment, node);
+  });
+
+  return container.innerHTML;
 }
 
 const SECTION_LABELS: Record<N2Section, string> = {
@@ -42,11 +132,18 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   const [selectedSection, setSelectedSection] = useState<N2Section | 'all'>('all');
   const [selectedExam, setSelectedExam] = useState<string>('');
   const [openScriptId, setOpenScriptId] = useState<number | null>(null);
+  const [revealedAnswers, setRevealedAnswers] = useState<Set<number>>(new Set());
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const [noteSelection, setNoteSelection] = useState<NoteSelection | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const [noteError, setNoteError] = useState('');
+  const [showNoteEditor, setShowNoteEditor] = useState(false);
+  const [questionNotes, setQuestionNotes] = useState<Record<number, QuestionNote[]>>({});
+  const [savingNote, setSavingNote] = useState(false);
 
   const sections: N2Section[] = ['vocabulary', 'grammar', 'reading', 'listening'];
   
@@ -256,15 +353,186 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
       // Not JSON, continue with markdown parsing
     }
     
-    // Convert **text** to <strong>text</strong>
-    let parsed = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-    // Convert __text__ to <u>text</u>
+    // Convert Markdown pipe tables before other block-level formatting changes their syntax.
+    const lines = text.split(/\r?\n/);
+    const getTableCells = (line: string): string[] => {
+      const trimmedLine = line.trim();
+      const content = trimmedLine.startsWith('|') ? trimmedLine.slice(1) : trimmedLine;
+      const withoutTrailingPipe = content.endsWith('|') ? content.slice(0, -1) : content;
+      return withoutTrailingPipe.split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, '|'));
+    };
+    const isTableSeparator = (line: string): boolean => {
+      const cells = getTableCells(line);
+      return cells.length > 1 && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+    };
+    const renderTableRow = (line: string, tag: 'th' | 'td', alignments: string[]): string => {
+      const cells = getTableCells(line);
+      return `<tr>${alignments.map((alignment, index) => {
+        const cell = cells[index] ?? '';
+        const style = alignment ? ` style="text-align: ${alignment}"` : '';
+        return `<${tag}${style}>${cell}</${tag}>`;
+      }).join('')}</tr>`;
+    };
+    const markdownLines: string[] = [];
+    for (let index = 0; index < lines.length; index++) {
+      if (index + 1 >= lines.length || !isTableSeparator(lines[index + 1])) {
+        markdownLines.push(lines[index]);
+        continue;
+      }
+
+      const separatorCells = getTableCells(lines[index + 1]);
+      const alignments = separatorCells.map((cell) => {
+        const left = cell.startsWith(':');
+        const right = cell.endsWith(':');
+        return left && right ? 'center' : right ? 'right' : left ? 'left' : '';
+      });
+      const header = renderTableRow(lines[index], 'th', alignments);
+      const bodyRows: string[] = [];
+      index += 2;
+      while (index < lines.length && lines[index].trim() && lines[index].includes('|')) {
+        bodyRows.push(renderTableRow(lines[index], 'td', alignments));
+        index++;
+      }
+      index--;
+      markdownLines.push(`<table><thead>${header}</thead><tbody>${bodyRows.join('')}</tbody></table>`);
+    }
+
+    // Apply markdown formatting
+    let parsed = markdownLines.join('\n');
+    
+    // Headings: # H1, ## H2, ### H3, #### H4
+    parsed = parsed.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+    parsed = parsed.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+    parsed = parsed.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    parsed = parsed.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+    
+    // Bold: **text**
+    parsed = parsed.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    // Underline: __text__
     parsed = parsed.replace(/__(.+?)__/g, '<u>$1</u>');
+    // Italic: *text* (single asterisk)
+    parsed = parsed.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+    
+    // Horizontal rule: --- or ***
+    parsed = parsed.replace(/^---+$/gm, '<hr/>');
+    parsed = parsed.replace(/^\*\*\*+$/gm, '<hr/>');
+    
+    // Inline code: `code`
+    parsed = parsed.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Links: [text](url)
+    parsed = parsed.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    
+    // Unordered lists: - item or * item
+    parsed = parsed.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+    // Ordered lists: 1. item
+    parsed = parsed.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    
+    // Wrap consecutive <li> in <ul>
+    parsed = parsed.replace(/(<li>.*<\/li>\n?)+/g, (match) => {
+      return '<ul>' + match.replace(/\n/g, '') + '</ul>';
+    });
+    
+    // Blockquotes: > text
+    parsed = parsed.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+    
     // Convert 漢字{かんじ} to <ruby>漢字<rt>かんじ</rt></ruby> (furigana above kanji only).
     parsed = parsed.replace(/([\u4e00-\u9fff\u3400-\u4dbf\uF900-\uFAff]+)\{([^}]+)\}/g, '<ruby>$1<rt>$2</rt></ruby>');
+    
     // Convert \n to <br> with left indentation (2 ideographic spaces for Japanese)
     parsed = parsed.replace(/\n/g, '<br/>').replace(/\t/g, '\u3000\u3000');
     return parsed;
+  };
+
+  const renderWithNotes = (text: string, question: N2Question, questionIndex: number, field: string): string =>
+    applyQuestionNotes(
+      parseFormattedText(text),
+      questionNotes[questionIndex] ?? question.notes ?? [],
+      field
+    );
+
+  const handleTextContextMenu = (event: React.MouseEvent<HTMLElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLElement>('[data-note-index][data-note-field]');
+    const selection = window.getSelection();
+    if (!target || !selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!target.contains(range.startContainer) || !target.contains(range.endContainer)) return;
+
+    const start = getNoteTextOffset(target, range.startContainer, range.startOffset);
+    const end = getNoteTextOffset(target, range.endContainer, range.endOffset);
+    if (start === null || end === null || end <= start) return;
+
+    const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+    let visibleText = '';
+    let current = walker.nextNode();
+    while (current) {
+      if (!current.parentElement?.closest('rt')) visibleText += current.textContent ?? '';
+      current = walker.nextNode();
+    }
+    const selectedText = visibleText.slice(start, end);
+    if (!selectedText || selection.toString() !== selectedText) return;
+
+    const questionIndex = Number(target.dataset.noteIndex);
+    const question = questions[questionIndex];
+    if (!question || !question.id || question.sub_id === undefined || question.number === undefined) return;
+
+    event.preventDefault();
+    setNoteError('');
+    setNoteText('');
+    setShowNoteEditor(false);
+    setNoteSelection({
+      questionIndex,
+      field: target.dataset.noteField ?? 'questionText',
+      start,
+      end,
+      selectedText,
+      x: event.clientX,
+      y: event.clientY,
+    });
+  };
+
+  const handleSaveNote = async () => {
+    if (!noteSelection) return;
+    const question = questions[noteSelection.questionIndex];
+    if (!question?.id || question.sub_id === undefined || question.number === undefined) {
+      setNoteError('This question cannot be saved because its database identifier is missing.');
+      return;
+    }
+
+    setSavingNote(true);
+    setNoteError('');
+    try {
+      const response = await fetch('http://localhost:5000/api/questions/notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: question.id,
+          sub_id: question.sub_id,
+          number: question.number,
+          field: noteSelection.field,
+          start: noteSelection.start,
+          end: noteSelection.end,
+          selectedText: noteSelection.selectedText,
+          note: noteText,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.details || data.error || `Request failed (${response.status})`);
+      }
+
+      setQuestionNotes((previous) => ({
+        ...previous,
+        [noteSelection.questionIndex]: data.notes,
+      }));
+      setNoteSelection(null);
+      setShowNoteEditor(false);
+      setNoteText('');
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : 'Failed to save note.');
+    } finally {
+      setSavingNote(false);
+    }
   };
 
   // Extract target word from question text (for sub_id=6)
@@ -364,6 +632,15 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   };
 
   const getOptionLabel = (index: number) => String(index + 1);
+  const getCorrectAnswerNumber = (question: N2Question): number | null => {
+    const optionIndex = question.options.findIndex((option) => option === question.correctAnswer);
+    if (optionIndex >= 0) return optionIndex + 1;
+
+    const answerNumber = Number(question.correctAnswer);
+    return Number.isInteger(answerNumber) && answerNumber >= 1 && answerNumber <= question.options.length
+      ? answerNumber
+      : null;
+  };
   const correctCount = submitted ? questions.filter((_, i) => isCorrect(i)).length : 0;
 
   const getDifficultyBadge = (difficulty: string) => {
@@ -437,7 +714,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
   };
 
   return (
-    <div className="n2-frame">
+    <div className="n2-frame" onContextMenu={handleTextContextMenu}>
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
@@ -626,7 +903,12 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
               <span className="n2-question-section-badge">{currentSectionLabel}</span>
               <span className="n2-question-number">問題 {currentQuestion.number ?? currentIndex + 1}</span>
             </div>
-            <div className="n2-question-text" dangerouslySetInnerHTML={{ __html: parseFormattedText(currentQuestion.questionText) }} />
+            <div
+              className="n2-question-text"
+              data-note-index={currentIndex}
+              data-note-field="questionText"
+              dangerouslySetInnerHTML={{ __html: renderWithNotes(currentQuestion.questionText, currentQuestion, currentIndex, 'questionText') }}
+            />
             <div className="n2-options">
               {currentQuestion.options.map((opt, optIdx) => {
                 const isSelected = answers[currentIndex] === optIdx;
@@ -650,7 +932,12 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                     />
                     <span className="n2-radio-custom"></span>
                     <span className="n2-option-label">{getOptionLabel(optIdx)}</span>
-                    <span className="n2-option-text" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                    <span
+                      className="n2-option-text"
+                      data-note-index={currentIndex}
+                      data-note-field={`option${optIdx + 1}`}
+                      dangerouslySetInnerHTML={{ __html: renderWithNotes(opt, currentQuestion, currentIndex, `option${optIdx + 1}`) }}
+                    />
                   </label>
                 );
               })}
@@ -663,7 +950,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                   <span className="n2-result-icon">{isCorrect(currentIndex) ? '✅' : '❌'}</span>
                   <span className="n2-result-text">{isCorrect(currentIndex) ? '正解！' : '不正解'}</span>
                 </div>
-                <p className="n2-correct-answer"><strong>正解:</strong> {currentQuestion.correctAnswer}</p>
+                <p className="n2-correct-answer"><strong>正解:</strong> {getCorrectAnswerNumber(currentQuestion) ?? '—'}</p>
                 <div className="n2-explanation">
                   <strong>解説:</strong>
                   <p>{currentQuestion.explanation}</p>
@@ -726,6 +1013,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                       let subId13Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       let subId14GridText = '';
                       let subId14PhotoUrl = '';
+                      let subId14MarkdownText = '';
                       let subId14Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
                       
                       // First pass: collect reading comprehension data
@@ -775,6 +1063,9 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                             if (parsed.grid && !subId14GridText) {
                               subId14GridText = parsed.grid;
                             }
+                            if (parsed.markdown && !subId14MarkdownText) {
+                              subId14MarkdownText = parsed.markdown;
+                            }
                           } catch {
                             const gridMatch = q.questionText.match(/grid:\s*([\s\S]*)/i);
                             if (gridMatch && !subId14GridText) {
@@ -817,7 +1108,9 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                 <div className="n2-reading-passage" style={{ marginTop: '20px', padding: '20px', border: '2px solid #333', background: '#fff' }}>
                                   <span 
                                     className="n2-q-text-label"
-                                    dangerouslySetInnerHTML={{ __html: parseFormattedText(readingPassageText) }}
+                                    data-note-index={globalIndex}
+                                    data-note-field="questionText"
+                                    dangerouslySetInnerHTML={{ __html: renderWithNotes(readingPassageText, q, globalIndex, 'questionText') }}
                                   />
                                 </div>
                               )}
@@ -830,30 +1123,58 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     </div>
                                   </div>
                                   <div className="n2-options-with-radio">
-                                    {rq.q.options.map((opt, optIdx) => (
-                                      <label key={optIdx} className="n2-option-with-radio">
-                                        <input
-                                          type="radio"
-                                          name={`question-${rq.globalIndex}`}
-                                          checked={answers[rq.globalIndex] === optIdx}
-                                          onChange={() => {
-                                            if (!submitted) {
-                                              setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx }));
-                                            }
-                                          }}
-                                          disabled={submitted}
-                                          className="n2-radio-input"
-                                        />
-                                        <span className="n2-radio-custom"></span>
-                                        <span className="n2-opt-num">{optIdx + 1}</span>
-                                        <span 
-                                          className="n2-opt-label"
-                                          dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }}
-                                        />
-                                      </label>
-                                    ))}
-                                  </div>
+                                    {rq.q.options.map((opt, optIdx) => {
+                                  const isRevealed = revealedAnswers.has(rq.globalIndex);
+                                  const isCorrectOption = opt === rq.q.correctAnswer;
+                                  const isSelected = answers[rq.globalIndex] === optIdx;
+                                  const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                  const isCorrectRevealed = isRevealed && isCorrectOption;
+                                  return (
+                                    <label key={optIdx} className={`n2-option-with-radio ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`}>
+                                      <input
+                                        type="radio"
+                                        name={`question-${rq.globalIndex}`}
+                                        checked={answers[rq.globalIndex] === optIdx}
+                                        onChange={() => {
+                                          if (!submitted) {
+                                            setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx }));
+                                          }
+                                        }}
+                                        disabled={submitted}
+                                        className="n2-radio-input"
+                                      />
+                                      <span className="n2-radio-custom"></span>
+                                      <span className="n2-opt-num">{optIdx + 1}</span>
+                                      <span 
+                                        className="n2-opt-label"
+                                        dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }}
+                                      />
+                                    </label>
+                                  );
+                                })}
+                                <div className="n2-answer-reveal">
+                                  <button
+                                    className="n2-answer-reveal-btn"
+                                    onClick={() => {
+                                      setRevealedAnswers((prev) => {
+                                        const next = new Set(prev);
+                                        if (next.has(rq.globalIndex)) next.delete(rq.globalIndex);
+                                        else next.add(rq.globalIndex);
+                                        return next;
+                                      });
+                                    }}
+                                    title="正解を表示"
+                                  >
+                                    ?
+                                  </button>
+                                  {revealedAnswers.has(rq.globalIndex) && (
+                                    <div className="n2-answer-reveal-text">
+                                      正解: {getCorrectAnswerNumber(rq.q) ?? '—'}
+                                    </div>
+                                  )}
                                 </div>
+                              </div>
+                            </div>
                               ))}
                             </div>
                           );
@@ -910,28 +1231,56 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                         </div>
                                       </div>
                                       <div className={`n2-options-with-radio ${currentSubId === 10 ? 'n2-usage-options' : ''}`} style={currentSubId === 10 ? { flexDirection: 'column', alignItems: 'flex-start' } : {}}>
-                                        {rq.q.options.map((opt, optIdx) => (
-                                          <label key={optIdx} className={`n2-option-with-radio ${currentSubId === 10 ? 'n2-usage-option' : ''}`} style={currentSubId === 10 ? { width: '100%', minWidth: 'auto' } : {}}>
-                                            <input
-                                              type="radio"
-                                              name={`question-${rq.globalIndex}`}
-                                              checked={answers[rq.globalIndex] === optIdx}
-                                              onChange={() => {
-                                                if (!submitted) {
-                                                  setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx }));
-                                                }
-                                              }}
-                                              disabled={submitted}
-                                              className="n2-radio-input"
-                                            />
-                                            <span className="n2-radio-custom"></span>
-                                            <span className="n2-opt-num">{optIdx + 1}</span>
-                                            <span 
-                                              className="n2-opt-label"
-                                              dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }}
-                                            />
-                                          </label>
-                                        ))}
+                                        {rq.q.options.map((opt, optIdx) => {
+                                          const isRevealed = revealedAnswers.has(rq.globalIndex);
+                                          const isCorrectOption = opt === rq.q.correctAnswer;
+                                          const isSelected = answers[rq.globalIndex] === optIdx;
+                                          const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                          const isCorrectRevealed = isRevealed && isCorrectOption;
+                                          return (
+                                            <label key={optIdx} className={`n2-option-with-radio ${currentSubId === 10 ? 'n2-usage-option' : ''} ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`} style={currentSubId === 10 ? { width: '100%', minWidth: 'auto' } : {}}>
+                                              <input
+                                                type="radio"
+                                                name={`question-${rq.globalIndex}`}
+                                                checked={answers[rq.globalIndex] === optIdx}
+                                                onChange={() => {
+                                                  if (!submitted) {
+                                                    setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx }));
+                                                  }
+                                                }}
+                                                disabled={submitted}
+                                                className="n2-radio-input"
+                                              />
+                                              <span className="n2-radio-custom"></span>
+                                              <span className="n2-opt-num">{optIdx + 1}</span>
+                                              <span 
+                                                className="n2-opt-label"
+                                                dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }}
+                                              />
+                                            </label>
+                                          );
+                                        })}
+                                        <div className="n2-answer-reveal">
+                                          <button
+                                            className="n2-answer-reveal-btn"
+                                            onClick={() => {
+                                              setRevealedAnswers((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(rq.globalIndex)) next.delete(rq.globalIndex);
+                                                else next.add(rq.globalIndex);
+                                                return next;
+                                              });
+                                            }}
+                                            title="正解を表示"
+                                          >
+                                            ?
+                                          </button>
+                                          {revealedAnswers.has(rq.globalIndex) && (
+                                            <div className="n2-answer-reveal-text">
+                                              正解: {getCorrectAnswerNumber(rq.q) ?? '—'}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -992,15 +1341,48 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                           <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
-                                      <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                                        {rq.q.options.map((opt, optIdx) => (
-                                          <label key={optIdx} className="n2-option-with-radio" style={{ width: '100%', minWidth: 'auto' }}>
-                                            <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
-                                            <span className="n2-radio-custom"></span>
-                                            <span className="n2-opt-num">{optIdx + 1}</span>
-                                            <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
-                                          </label>
-                                        ))}
+                                      <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        {rq.q.options.map((opt, optIdx) => {
+                                          const isRevealed = revealedAnswers.has(rq.globalIndex);
+                                          const isCorrectOption = opt === rq.q.correctAnswer;
+                                          const isSelected = answers[rq.globalIndex] === optIdx;
+                                          const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                          const isCorrectRevealed = isRevealed && isCorrectOption;
+                                          return (
+                                            <label key={optIdx} className={`n2-option-with-radio n2-usage-option ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`} style={{ width: '100%', minWidth: 'auto' }}>
+                                              <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
+                                              <span className="n2-radio-custom"></span>
+                                              <span className="n2-opt-num">{optIdx + 1}</span>
+                                              <span
+                                                className="n2-opt-label"
+                                                data-note-index={rq.globalIndex}
+                                                data-note-field={`option${optIdx + 1}`}
+                                                dangerouslySetInnerHTML={{ __html: renderWithNotes(opt, rq.q, rq.globalIndex, `option${optIdx + 1}`) }}
+                                              />
+                                            </label>
+                                          );
+                                        })}
+                                        <div className="n2-answer-reveal">
+                                          <button
+                                            className="n2-answer-reveal-btn"
+                                            onClick={() => {
+                                              setRevealedAnswers((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(rq.globalIndex)) next.delete(rq.globalIndex);
+                                                else next.add(rq.globalIndex);
+                                                return next;
+                                              });
+                                            }}
+                                            title="正解を表示"
+                                          >
+                                            ?
+                                          </button>
+                                          {revealedAnswers.has(rq.globalIndex) && (
+                                            <div className="n2-answer-reveal-text">
+                                              正解: {getCorrectAnswerNumber(rq.q) ?? '—'}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1061,18 +1443,51 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                       <div className="n2-question-line">
                                         <div className="n2-q-text-wrapper">
                                           <span className="n2-q-number">{rq.q.number ?? rq.globalIndex + 1}) </span>
-                                          <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
+                                          <span
+                                            className="n2-q-text-label"
+                                            data-note-index={rq.globalIndex}
+                                            data-note-field="question"
+                                            dangerouslySetInnerHTML={{ __html: renderWithNotes(question, rq.q, rq.globalIndex, 'question') }}
+                                          />
                                         </div>
                                       </div>
-                                      <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                                        {rq.q.options.map((opt, optIdx) => (
-                                          <label key={optIdx} className="n2-option-with-radio" style={{ width: '100%', minWidth: 'auto' }}>
-                                            <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
-                                            <span className="n2-radio-custom"></span>
-                                            <span className="n2-opt-num">{optIdx + 1}</span>
-                                            <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
-                                          </label>
-                                        ))}
+                                      <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        {rq.q.options.map((opt, optIdx) => {
+                                          const isRevealed = revealedAnswers.has(rq.globalIndex);
+                                          const isCorrectOption = opt === rq.q.correctAnswer;
+                                          const isSelected = answers[rq.globalIndex] === optIdx;
+                                          const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                          const isCorrectRevealed = isRevealed && isCorrectOption;
+                                          return (
+                                            <label key={optIdx} className={`n2-option-with-radio ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`} style={{ width: '100%', minWidth: 'auto' }}>
+                                              <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
+                                              <span className="n2-radio-custom"></span>
+                                              <span className="n2-opt-num">{optIdx + 1}</span>
+                                              <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                                            </label>
+                                          );
+                                        })}
+                                        <div className="n2-answer-reveal">
+                                          <button
+                                            className="n2-answer-reveal-btn"
+                                            onClick={() => {
+                                              setRevealedAnswers((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(rq.globalIndex)) next.delete(rq.globalIndex);
+                                                else next.add(rq.globalIndex);
+                                                return next;
+                                              });
+                                            }}
+                                            title="正解を表示"
+                                          >
+                                            ?
+                                          </button>
+                                          {revealedAnswers.has(rq.globalIndex) && (
+                                            <div className="n2-answer-reveal-text">
+                                              正解: {getCorrectAnswerNumber(rq.q) ?? '—'}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1123,15 +1538,43 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                           <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
-                                      <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                                        {rq.q.options.map((opt, optIdx) => (
-                                          <label key={optIdx} className="n2-option-with-radio" style={{ width: '100%', minWidth: 'auto' }}>
-                                            <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
-                                            <span className="n2-radio-custom"></span>
-                                            <span className="n2-opt-num">{optIdx + 1}</span>
-                                            <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
-                                          </label>
-                                        ))}
+                                      <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        {rq.q.options.map((opt, optIdx) => {
+                                          const isRevealed = revealedAnswers.has(rq.globalIndex);
+                                          const isCorrectOption = opt === rq.q.correctAnswer;
+                                          const isSelected = answers[rq.globalIndex] === optIdx;
+                                          const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                          const isCorrectRevealed = isRevealed && isCorrectOption;
+                                          return (
+                                            <label key={optIdx} className={`n2-option-with-radio ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`} style={{ width: '100%', minWidth: 'auto' }}>
+                                              <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
+                                              <span className="n2-radio-custom"></span>
+                                              <span className="n2-opt-num">{optIdx + 1}</span>
+                                              <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                                            </label>
+                                          );
+                                        })}
+                                        <div className="n2-answer-reveal">
+                                          <button
+                                            className="n2-answer-reveal-btn"
+                                            onClick={() => {
+                                              setRevealedAnswers((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(rq.globalIndex)) next.delete(rq.globalIndex);
+                                                else next.add(rq.globalIndex);
+                                                return next;
+                                              });
+                                            }}
+                                            title="正解を表示"
+                                          >
+                                            ?
+                                          </button>
+                                          {revealedAnswers.has(rq.globalIndex) && (
+                                            <div className="n2-answer-reveal-text">
+                                              正解: {getCorrectAnswerNumber(rq.q) ?? '—'}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1174,15 +1617,43 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                           <span className="n2-q-text-label" dangerouslySetInnerHTML={{ __html: question ? parseFormattedText(question) : '' }} />
                                         </div>
                                       </div>
-                                      <div style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
-                                        {rq.q.options.map((opt, optIdx) => (
-                                          <label key={optIdx} className="n2-option-with-radio" style={{ width: '100%', minWidth: 'auto' }}>
-                                            <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
-                                            <span className="n2-radio-custom"></span>
-                                            <span className="n2-opt-num">{optIdx + 1}</span>
-                                            <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
-                                          </label>
-                                        ))}
+                                      <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                                        {rq.q.options.map((opt, optIdx) => {
+                                          const isRevealed = revealedAnswers.has(rq.globalIndex);
+                                          const isCorrectOption = opt === rq.q.correctAnswer;
+                                          const isSelected = answers[rq.globalIndex] === optIdx;
+                                          const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                          const isCorrectRevealed = isRevealed && isCorrectOption;
+                                          return (
+                                            <label key={optIdx} className={`n2-option-with-radio ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`} style={{ width: '100%', minWidth: 'auto' }}>
+                                              <input type="radio" name={`question-${rq.globalIndex}`} checked={answers[rq.globalIndex] === optIdx} onChange={() => { if (!submitted) { setAnswers((prev) => ({ ...prev, [rq.globalIndex]: optIdx })); } }} disabled={submitted} className="n2-radio-input" />
+                                              <span className="n2-radio-custom"></span>
+                                              <span className="n2-opt-num">{optIdx + 1}</span>
+                                              <span className="n2-opt-label" dangerouslySetInnerHTML={{ __html: parseFormattedText(opt) }} />
+                                            </label>
+                                          );
+                                        })}
+                                        <div className="n2-answer-reveal">
+                                          <button
+                                            className="n2-answer-reveal-btn"
+                                            onClick={() => {
+                                              setRevealedAnswers((prev) => {
+                                                const next = new Set(prev);
+                                                if (next.has(rq.globalIndex)) next.delete(rq.globalIndex);
+                                                else next.add(rq.globalIndex);
+                                                return next;
+                                              });
+                                            }}
+                                            title="正解を表示"
+                                          >
+                                            ?
+                                          </button>
+                                          {revealedAnswers.has(rq.globalIndex) && (
+                                            <div className="n2-answer-reveal-text">
+                                              正解: {getCorrectAnswerNumber(rq.q) ?? '—'}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1195,6 +1666,14 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     alt="問題文の参考図（語彙 N2）"
                                     className="n2-sub14-photo"
                                     loading="lazy"
+                                  />
+                                </div>
+                              )}
+                              {subId14MarkdownText && (
+                                <div className="n2-sub14-paper">
+                                  <div
+                                    className="n2-sub14-markdown"
+                                    dangerouslySetInnerHTML={{ __html: parseFormattedText(subId14MarkdownText) }}
                                   />
                                 </div>
                               )}
@@ -1275,12 +1754,16 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                   {currentSubId === 6 ? (
                                     <span 
                                       className="n2-target-word"
-                                      dangerouslySetInnerHTML={{ __html: parseFormattedText(q.questionText) }}
+                                      data-note-index={globalIndex}
+                                      data-note-field="questionText"
+                                      dangerouslySetInnerHTML={{ __html: renderWithNotes(q.questionText, q, globalIndex, 'questionText') }}
                                     />
                                   ) : (
                                     <span 
                                       className="n2-q-text-label"
-                                      dangerouslySetInnerHTML={{ __html: parseFormattedText(q.questionText) }}
+                                      data-note-index={globalIndex}
+                                      data-note-field="questionText"
+                                      dangerouslySetInnerHTML={{ __html: renderWithNotes(q.questionText, q, globalIndex, 'questionText') }}
                                     />
                                   )}
                                 </div>
@@ -1298,8 +1781,14 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                     ? parseOptionText(opt, targetWord)
                                     : parseFormattedText(opt);
                                   
+                                  const isRevealed = revealedAnswers.has(globalIndex);
+                                  const isCorrectOption = opt === q.correctAnswer;
+                                  const isSelected = answers[globalIndex] === optIdx;
+                                  const isWrongSelected = isRevealed && isSelected && !isCorrectOption;
+                                  const isCorrectRevealed = isRevealed && isCorrectOption;
+                                  
                                   return (
-                                    <label key={optIdx} className={`n2-option-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-option' : (q.section === 'listening' && (currentSubId === 3 || currentSubId === 4)) ? 'n2-listening-sub3-option' : ''}`}>
+                                    <label key={optIdx} className={`n2-option-with-radio ${(currentSubId === 6 || (q.section === 'listening' && (currentSubId === 1 || currentSubId === 2))) ? 'n2-usage-option' : (q.section === 'listening' && (currentSubId === 3 || currentSubId === 4)) ? 'n2-listening-sub3-option' : ''} ${isWrongSelected ? 'n2-answer-wrong' : ''} ${isCorrectRevealed ? 'n2-answer-correct' : ''}`}>
                                       <input
                                         type="radio"
                                         name={`question-${globalIndex}`}
@@ -1313,18 +1802,49 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                         className="n2-radio-input"
                                       />
                                       <span className="n2-radio-custom"></span>
-                                      {currentSubId === 5 && q.section === 'listening' ? null : (
-                                        <span className="n2-opt-num">{optIdx + 1}</span>
-                                      )}
-                                      {currentSubId !== 51 && !((q.section === 'listening') && (currentSubId === 3 || currentSubId === 4)) && (
-                                        <span 
-                                          className="n2-opt-label"
-                                          dangerouslySetInnerHTML={{ __html: optionHtml }}
-                                        />
-                                      )}
+                                      <div className="n2-option-text-content">
+                                        {currentSubId === 5 && q.section === 'listening' ? null : (
+                                          <span className="n2-opt-num">{optIdx + 1}</span>
+                                        )}
+                                        {currentSubId !== 51 && !((q.section === 'listening') && (currentSubId === 3 || currentSubId === 4)) && (
+                                          <span 
+                                            className="n2-opt-label"
+                                            data-note-index={globalIndex}
+                                            data-note-field={`option${optIdx + 1}`}
+                                            dangerouslySetInnerHTML={{
+                                              __html: applyQuestionNotes(
+                                                optionHtml,
+                                                questionNotes[globalIndex] ?? q.notes ?? [],
+                                                `option${optIdx + 1}`
+                                              ),
+                                            }}
+                                          />
+                                        )}
+                                      </div>
                                     </label>
                                   );
                                 })}
+                              </div>
+                              <div className="n2-answer-reveal">
+                                <button
+                                  className="n2-answer-reveal-btn"
+                                  onClick={() => {
+                                    setRevealedAnswers((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(globalIndex)) next.delete(globalIndex);
+                                      else next.add(globalIndex);
+                                      return next;
+                                    });
+                                  }}
+                                  title="正解を表示"
+                                >
+                                  ?
+                                </button>
+                                {revealedAnswers.has(globalIndex) && (
+                                  <div className="n2-answer-reveal-text">
+                                    正解: {getCorrectAnswerNumber(q) ?? '—'}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -1414,6 +1934,53 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                 />
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {noteSelection && !showNoteEditor && (
+        <div
+          className="n2-note-context-menu"
+          style={{
+            left: Math.min(noteSelection.x, window.innerWidth - 140),
+            top: Math.min(noteSelection.y, window.innerHeight - 48),
+          }}
+        >
+          <button type="button" onClick={() => setShowNoteEditor(true)}>Add note</button>
+        </div>
+      )}
+      {noteSelection && showNoteEditor && (
+        <div className="n2-note-editor-overlay" onClick={() => setNoteSelection(null)}>
+          <div className="n2-note-editor" onClick={(event) => event.stopPropagation()}>
+            <h3>Add note</h3>
+            <p className="n2-note-editor-selection">{noteSelection.selectedText}</p>
+            <textarea
+              autoFocus
+              maxLength={200}
+              value={noteText}
+              onChange={(event) => setNoteText(event.target.value)}
+              placeholder="Enter your note"
+            />
+            {noteError && <p className="n2-note-editor-error">{noteError}</p>}
+            <div className="n2-note-editor-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  setNoteSelection(null);
+                  setShowNoteEditor(false);
+                }}
+                disabled={savingNote}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="n2-note-save"
+                onClick={handleSaveNote}
+                disabled={!noteText.trim() || savingNote}
+              >
+                {savingNote ? 'Saving…' : 'Save note'}
+              </button>
+            </div>
           </div>
         </div>
       )}

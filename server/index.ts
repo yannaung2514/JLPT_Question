@@ -191,6 +191,9 @@ app.get('/api/questions', async (req, res) => {
       return {
         id: row.id,
         questionText: questionText,
+        notes: row.question && typeof row.question === 'object' && Array.isArray(row.question.notes)
+          ? row.question.notes
+          : [],
         script: scriptText,
         photoUrl: photoUrl,
         options: options,
@@ -216,6 +219,106 @@ app.get('/api/questions', async (req, res) => {
     console.error('Error fetching questions:', err);
     const message = err instanceof Error ? err.message : 'Unknown error';
     res.status(500).json({ error: 'Failed to fetch questions', details: message });
+  }
+});
+
+app.post('/api/questions/notes', async (req, res) => {
+  try {
+    const { id, sub_id, number, field, start, end, selectedText, note } = req.body ?? {};
+    const allowedFields = new Set([
+      'questionText', 'passage', 'passageA', 'passageB', 'warning', 'question', 'info', 'markdown',
+      'option1', 'option2', 'option3', 'option4',
+    ]);
+    const trimmedNote = typeof note === 'string' ? note.trim() : '';
+
+    if (
+      typeof id !== 'string' || !id.trim() ||
+      !Number.isInteger(sub_id) || !Number.isInteger(number) ||
+      typeof field !== 'string' || !allowedFields.has(field) ||
+      !Number.isInteger(start) || start < 0 ||
+      !Number.isInteger(end) || end <= start ||
+      typeof selectedText !== 'string' || !selectedText ||
+      !trimmedNote || trimmedNote.length > 200
+    ) {
+      res.status(400).json({ error: 'Invalid note data.' });
+      return;
+    }
+
+    const { url: supabaseUrl, key: supabaseKey } = getSupabaseConfig();
+    const rowQuery = new URLSearchParams({
+      select: 'question',
+      id: `eq.${id}`,
+      sub_id: `eq.${sub_id}`,
+      number: `eq.${number}`,
+    });
+    const headers = {
+      apikey: supabaseKey,
+      Authorization: `Bearer ${supabaseKey}`,
+      'Content-Type': 'application/json',
+    };
+    const rowResponse = await fetch(`${supabaseUrl}/rest/v1/JLPTQuestions?${rowQuery}`, { headers });
+    if (!rowResponse.ok) {
+      throw new Error(`Failed to load question for note: HTTP ${rowResponse.status} ${await rowResponse.text()}`);
+    }
+
+    const rows = await rowResponse.json();
+    if (!Array.isArray(rows) || rows.length === 0) {
+      res.status(404).json({ error: 'Question not found.' });
+      return;
+    }
+
+    const originalQuestion = rows[0].question;
+    const questionData: Record<string, unknown> =
+      originalQuestion && typeof originalQuestion === 'object' && !Array.isArray(originalQuestion)
+        ? { ...originalQuestion }
+        : { text: typeof originalQuestion === 'string' ? originalQuestion : '' };
+    const notes = Array.isArray(questionData.notes) ? [...questionData.notes] : [];
+    const overlapsExistingNote = notes.some((existing: any) =>
+      existing?.field === field &&
+      Number.isInteger(existing.start) &&
+      Number.isInteger(existing.end) &&
+      start < existing.end &&
+      end > existing.start
+    );
+    if (overlapsExistingNote) {
+      res.status(409).json({ error: 'This text already has a note.' });
+      return;
+    }
+
+    notes.push({
+      field,
+      start,
+      end,
+      selectedText,
+      note: trimmedNote,
+      ruby: `<ruby>${selectedText}<rt>${trimmedNote}</rt></ruby>`,
+    });
+    questionData.notes = notes;
+
+    const updateQuery = new URLSearchParams({
+      id: `eq.${id}`,
+      sub_id: `eq.${sub_id}`,
+      number: `eq.${number}`,
+    });
+    const updateResponse = await fetch(`${supabaseUrl}/rest/v1/JLPTQuestions?${updateQuery}`, {
+      method: 'PATCH',
+      headers: { ...headers, Prefer: 'return=representation' },
+      body: JSON.stringify({ question: questionData }),
+    });
+    if (!updateResponse.ok) {
+      throw new Error(`Failed to save note: HTTP ${updateResponse.status} ${await updateResponse.text()}`);
+    }
+
+    const updatedRows = await updateResponse.json();
+    if (!Array.isArray(updatedRows) || updatedRows.length === 0) {
+      res.status(404).json({ error: 'Question not found.' });
+      return;
+    }
+    res.json({ notes });
+  } catch (err) {
+    console.error('Error saving question note:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    res.status(500).json({ error: 'Failed to save note.', details: message });
   }
 });
 
