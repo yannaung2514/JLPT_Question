@@ -548,7 +548,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
     setSavingNote(true);
     setNoteError('');
     try {
-      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+      const API_BASE_URL = 'https://jlptquestion-production.up.railway.app';
       const response = await fetch(API_BASE_URL + '/api/questions/notes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

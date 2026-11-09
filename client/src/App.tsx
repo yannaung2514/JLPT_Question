@@ -45,7 +45,7 @@ function App() {
     formData.append('pdfFile', file);
     console.log('FormData created, sending to server...');
 
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+    const API_BASE_URL = 'https://jlptquestion-production.up.railway.app';
     try {
       const res = await axios.post(API_BASE_URL + '/upload', formData);
       console.log('Response received:', res.data);
@@ -77,7 +77,7 @@ function App() {
     setLoading(true);
     setPdfUploaded(true);
     
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+    const API_BASE_URL = 'https://jlptquestion-production.up.railway.app';
     try {
       console.log('Making request to: ' + API_BASE_URL + '/api/questions');
       const res = await axios.get(API_BASE_URL + '/api/questions');
@@ -115,7 +115,7 @@ function App() {
       } else if (!err?.response) {
         // No response at all means the server was never reached
         // (not started, wrong port, or blocked by the network).
-        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
+        const API_BASE_URL = 'https://jlptquestion-production.up.railway.app';
         message =
           'Failed to load questions from database: the server is not reachable at ' +
           API_BASE_URL + '. Start it with "npm run server" (or "npm run dev" ' +
