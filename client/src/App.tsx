@@ -45,8 +45,9 @@ function App() {
     formData.append('pdfFile', file);
     console.log('FormData created, sending to server...');
 
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
     try {
-      const res = await axios.post('http://localhost:5000/upload', formData);
+      const res = await axios.post(API_BASE_URL + '/upload', formData);
       console.log('Response received:', res.data);
       console.log('Debug info:', res.data.debug);
       const rawQuestions = res.data.questions;
@@ -76,9 +77,10 @@ function App() {
     setLoading(true);
     setPdfUploaded(true);
     
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
     try {
-      console.log('Making request to: http://localhost:5000/api/questions');
-      const res = await axios.get('http://localhost:5000/api/questions');
+      console.log('Making request to: ' + API_BASE_URL + '/api/questions');
+      const res = await axios.get(API_BASE_URL + '/api/questions');
       console.log('Full response:', res);
       console.log('Response data:', res.data);
       console.log('Response status:', res.status);
@@ -113,9 +115,10 @@ function App() {
       } else if (!err?.response) {
         // No response at all means the server was never reached
         // (not started, wrong port, or blocked by the network).
+        const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
         message =
           'Failed to load questions from database: the server is not reachable at ' +
-          'http://localhost:5000. Start it with "npm run server" (or "npm run dev" ' +
+          API_BASE_URL + '. Start it with "npm run server" (or "npm run dev" ' +
           'from the project root) and try again.';
       } else {
         message = `Failed to load questions from database: ${err.message}`;
