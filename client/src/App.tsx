@@ -27,6 +27,7 @@ function App() {
       explanation: q.explanation,
       script: q.script,
       photoUrl: q.photoUrl,
+      grid: q.grid,
       difficulty: (q.difficulty && difficulties.includes(q.difficulty)) ? q.difficulty : difficulties[index % difficulties.length],
     }));
   };

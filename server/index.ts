@@ -197,6 +197,7 @@ app.get('/api/questions', async (req, res) => {
           : [],
         script: scriptText,
         photoUrl: photoUrl,
+        grid: row.grid != null ? String(row.grid) : '',
         options: options,
         correctAnswer: correctAnswer,
         explanation: (typeof row.question === 'object' && row.question !== null) ? (row.question.explanation || '') : '',

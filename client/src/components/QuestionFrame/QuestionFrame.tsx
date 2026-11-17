@@ -17,6 +17,7 @@ interface N2Question {
   notes?: QuestionNote[];
   script?: string;
   photoUrl?: string;
+  grid?: string;
 }
 
 interface QuestionNote {
@@ -214,6 +215,30 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
       audio.currentTime = 0;
     }
   }, [currentAudioUrl]);
+
+  // Lock body scroll when script modal is open so wheel scrolling stays inside the popup
+  useEffect(() => {
+    if (openScriptId !== null) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [openScriptId]);
+
+  const handleScriptWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const delta = e.deltaY;
+    const atTop = el.scrollTop <= 0;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight;
+
+    // Prevent scroll chaining to the background when modal content is at an edge
+    if ((atTop && delta < 0) || (atBottom && delta > 0)) {
+      e.preventDefault();
+    }
+  };
 
   const handleTogglePlay = () => {
     const audio = audioRef.current;
@@ -1107,19 +1132,24 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                           if (q.photoUrl && !subId14PhotoUrl) {
                             subId14PhotoUrl = q.photoUrl;
                           }
-                          // Extract grid from question text (format: "grid:..." or JSON with grid field)
-                          try {
-                            const parsed = JSON.parse(q.questionText);
-                            if (parsed.grid && !subId14GridText) {
-                              subId14GridText = parsed.grid;
-                            }
-                            if (parsed.markdown && !subId14MarkdownText) {
-                              subId14MarkdownText = parsed.markdown;
-                            }
-                          } catch {
-                            const gridMatch = q.questionText.match(/grid:\s*([\s\S]*)/i);
-                            if (gridMatch && !subId14GridText) {
-                              subId14GridText = gridMatch[1].trim();
+                          // Grid source priority: dedicated `grid` field > JSON inside questionText > "grid:..." prefix
+                          if (q.grid && !subId14GridText) {
+                            subId14GridText = q.grid;
+                          } else {
+                            // Extract grid from question text (format: "grid:..." or JSON with grid field)
+                            try {
+                              const parsed = JSON.parse(q.questionText);
+                              if (parsed.grid && !subId14GridText) {
+                                subId14GridText = parsed.grid;
+                              }
+                              if (parsed.markdown && !subId14MarkdownText) {
+                                subId14MarkdownText = parsed.markdown;
+                              }
+                            } catch {
+                              const gridMatch = q.questionText.match(/grid:\s*([\s\S]*)/i);
+                              if (gridMatch && !subId14GridText) {
+                                subId14GridText = gridMatch[1].trim();
+                              }
                             }
                           }
                           subId14Questions.push({ q, globalIndex: questions.indexOf(q) });
@@ -1703,9 +1733,17 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                           }
                           return (
                             <div key={globalIndex}>
-                              {showSectionHeader && currentSubId && (
+                              {/* 問題１４のヘッダーは固定値ではなく DB の questionText（title）から可変で取得 */}
+                              {showSectionHeader && (
                                 <div className="n2-section-header-text" style={{ marginTop: '20px', fontWeight: 'bold', fontSize: '16px' }}>
-                                  {getSectionHeaderText(currentSubId, q.section)}
+                                  {(() => {
+                                    try {
+                                      const parsed = JSON.parse(q.questionText);
+                                      if (parsed.title) return parsed.title;
+                                    } catch {}
+                                    // No title field: use the default section header text
+                                    return getSectionHeaderText(currentSubId, q.section);
+                                  })()}
                                 </div>
                               )}
                               {subId14Questions.map((rq) => {
@@ -1740,6 +1778,14 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                           />
                                         </div>
                                       </div>
+                                      {subId14GridText && (
+                                        <div className="n2-sub14-grid" data-note-index={rq.globalIndex} data-note-field="grid">
+                                          <div
+                                            className="n2-sub14-grid-table"
+                                            dangerouslySetInnerHTML={{ __html: subId14GridText }}
+                                          />
+                                        </div>
+                                      )}
                                       <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                                         {rq.q.options.map((opt, optIdx) => {
                                           const isRevealed = revealedAnswers.has(rq.globalIndex);
@@ -2047,7 +2093,7 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
               <h3 className="n2-script-modal-title">スクリプト</h3>
               <button className="n2-script-close-btn" onClick={() => setOpenScriptId(null)}>×</button>
             </div>
-            <div className="n2-script-modal-body">
+            <div className="n2-script-modal-body" onWheel={handleScriptWheel}>
               <p className="n2-script-text">
                 {questions[openScriptId]?.script || 'スクリプトがありません'}
               </p>

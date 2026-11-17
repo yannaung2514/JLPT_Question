@@ -29,6 +29,8 @@ export interface N2Question {
   difficulty: 'easy' | 'medium' | 'hard' | string;
   /** Script text for 聴解 (listening) questions, shown in a popup. */
   script?: string;
+  /** Pre-rendered HTML table grid shown for 読解 問題１４ (sub_id=14). */
+  grid?: string;
 }
 
 export interface N2QuizState {
