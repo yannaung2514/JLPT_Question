@@ -1086,7 +1086,6 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                       let subId13PassageShown = false;
                       let subId13PassageText = '';
                       let subId13Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
-                      let subId14GridText = '';
                       let subId14PhotoUrl = '';
                       let subId14MarkdownText = '';
                       let subId14Questions: { q: typeof sectionQuestions[0]; globalIndex: number }[] = [];
@@ -1132,25 +1131,11 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                           if (q.photoUrl && !subId14PhotoUrl) {
                             subId14PhotoUrl = q.photoUrl;
                           }
-                          // Grid source priority: dedicated `grid` field > JSON inside questionText > "grid:..." prefix
-                          if (q.grid && !subId14GridText) {
-                            subId14GridText = q.grid;
-                          } else {
-                            // Extract grid from question text (format: "grid:..." or JSON with grid field)
+                          if (q.questionText && !subId14MarkdownText) {
                             try {
                               const parsed = JSON.parse(q.questionText);
-                              if (parsed.grid && !subId14GridText) {
-                                subId14GridText = parsed.grid;
-                              }
-                              if (parsed.markdown && !subId14MarkdownText) {
-                                subId14MarkdownText = parsed.markdown;
-                              }
-                            } catch {
-                              const gridMatch = q.questionText.match(/grid:\s*([\s\S]*)/i);
-                              if (gridMatch && !subId14GridText) {
-                                subId14GridText = gridMatch[1].trim();
-                              }
-                            }
+                              if (parsed.markdown) subId14MarkdownText = parsed.markdown;
+                            } catch {}
                           }
                           subId14Questions.push({ q, globalIndex: questions.indexOf(q) });
                         }
@@ -1778,14 +1763,30 @@ function QuestionFrame({ questions, audioUrls, onReset }: QuestionFrameProps) {
                                           />
                                         </div>
                                       </div>
-                                      {subId14GridText && (
-                                        <div className="n2-sub14-grid" data-note-index={rq.globalIndex} data-note-field="grid">
-                                          <div
-                                            className="n2-sub14-grid-table"
-                                            dangerouslySetInnerHTML={{ __html: subId14GridText }}
-                                          />
-                                        </div>
-                                      )}
+                                      {(() => {
+                                        // Per-question grid: dedicated `grid` field > JSON inside questionText > "grid:..." prefix
+                                        let gridText = '';
+                                        if (rq.q.grid) {
+                                          gridText = rq.q.grid;
+                                        } else {
+                                          try {
+                                            const parsed = JSON.parse(rq.q.questionText);
+                                            if (parsed.grid) gridText = parsed.grid;
+                                          } catch {
+                                            const gridMatch = rq.q.questionText.match(/grid:\s*([\s\S]*)/i);
+                                            if (gridMatch) gridText = gridMatch[1].trim();
+                                          }
+                                        }
+                                        if (!gridText) return null;
+                                        return (
+                                          <div className="n2-sub14-grid" data-note-index={rq.globalIndex} data-note-field="grid">
+                                            <div
+                                              className="n2-sub14-grid-table"
+                                              dangerouslySetInnerHTML={{ __html: gridText }}
+                                            />
+                                          </div>
+                                        );
+                                      })()}
                                       <div className="n2-options-with-radio" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
                                         {rq.q.options.map((opt, optIdx) => {
                                           const isRevealed = revealedAnswers.has(rq.globalIndex);
